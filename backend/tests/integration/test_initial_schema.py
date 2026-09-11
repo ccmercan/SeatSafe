@@ -1,0 +1,220 @@
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from uuid import UUID
+
+import pytest
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+
+from seatsafe.application.holds import HoldService
+from seatsafe.config import Settings
+from seatsafe.db.holds import SqlAlchemyHoldUnitOfWork
+from seatsafe.db.safety import require_test_database
+from seatsafe.db.session import create_database_engine, create_session_factory
+from seatsafe.domain.holds import SeatUnavailable
+
+pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(scope="module")
+def migrated_database() -> None:
+    settings = Settings(environment="test")
+    require_test_database(settings)
+    _upgrade_database()
+
+
+@pytest.mark.asyncio
+async def test_initial_migration_creates_expected_tables(migrated_database: None) -> None:
+    settings = Settings(environment="test")
+    engine = create_database_engine(settings)
+
+    try:
+        async with engine.connect() as connection:
+            result = await connection.execute(
+                text(
+                    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+                )
+            )
+            table_names = set(result.scalars())
+    finally:
+        await engine.dispose()
+
+    assert {
+        "alembic_version",
+        "event_seats",
+        "events",
+        "idempotency_records",
+        "reservations",
+        "seat_holds",
+        "seats",
+        "users",
+        "venues",
+    } <= table_names
+
+
+@pytest.mark.asyncio
+async def test_database_rejects_two_active_holds_for_one_event_seat(
+    migrated_database: None,
+) -> None:
+    settings = Settings(environment="test")
+    engine = create_database_engine(settings)
+    ids = _FixtureIds()
+    now = datetime(2026, 9, 11, 12, 0, tzinfo=UTC)
+
+    try:
+        async with engine.begin() as connection:
+            await connection.execute(
+                text(
+                    "TRUNCATE idempotency_records, reservations, seat_holds, event_seats, "
+                    "events, seats, venues, users"
+                )
+            )
+            await _seed_event_seat(connection, ids, now)
+            await connection.execute(
+                text(
+                    "INSERT INTO seat_holds "
+                    "(id, event_seat_id, owner_id, status, created_at, expires_at) "
+                    "VALUES (:id, :event_seat_id, :owner_id, 'active', :created_at, :expires_at)"
+                ),
+                {
+                    "id": ids.first_hold,
+                    "event_seat_id": ids.event_seat,
+                    "owner_id": ids.user,
+                    "created_at": now,
+                    "expires_at": now + timedelta(minutes=5),
+                },
+            )
+
+        with pytest.raises(IntegrityError):
+            async with engine.begin() as connection:
+                await connection.execute(
+                    text(
+                        "INSERT INTO seat_holds "
+                        "(id, event_seat_id, owner_id, status, created_at, expires_at) "
+                        "VALUES (:id, :event_seat_id, :owner_id, 'active', "
+                        ":created_at, :expires_at)"
+                    ),
+                    {
+                        "id": ids.second_hold,
+                        "event_seat_id": ids.event_seat,
+                        "owner_id": ids.user,
+                        "created_at": now,
+                        "expires_at": now + timedelta(minutes=5),
+                    },
+                )
+
+        async with engine.connect() as connection:
+            active_count = await connection.scalar(
+                text(
+                    "SELECT count(*) FROM seat_holds "
+                    "WHERE event_seat_id = :event_seat_id AND status = 'active'"
+                ),
+                {"event_seat_id": ids.event_seat},
+            )
+    finally:
+        await engine.dispose()
+
+    assert active_count == 1
+
+
+@pytest.mark.asyncio
+async def test_hold_service_creates_one_hold_and_rejects_the_next(
+    migrated_database: None,
+) -> None:
+    settings = Settings(environment="test")
+    engine = create_database_engine(settings)
+    ids = _FixtureIds()
+    now = datetime(2026, 9, 11, 12, 0, tzinfo=UTC)
+    session_factory = create_session_factory(engine)
+    generated_ids = iter((ids.first_hold, ids.second_hold))
+    service = HoldService(
+        unit_of_work_factory=lambda: SqlAlchemyHoldUnitOfWork(session_factory),
+        clock=_FixedClock(now),
+        id_factory=lambda: next(generated_ids),
+        hold_duration=timedelta(minutes=5),
+    )
+
+    try:
+        async with engine.begin() as connection:
+            await connection.execute(
+                text(
+                    "TRUNCATE idempotency_records, reservations, seat_holds, event_seats, "
+                    "events, seats, venues, users"
+                )
+            )
+            await _seed_event_seat(connection, ids, now)
+
+        hold = await service.create_hold(event_seat_id=ids.event_seat, owner_id=ids.user)
+
+        with pytest.raises(SeatUnavailable):
+            await service.create_hold(event_seat_id=ids.event_seat, owner_id=ids.user)
+
+        async with engine.connect() as connection:
+            active_count = await connection.scalar(
+                text("SELECT count(*) FROM seat_holds WHERE status = 'active'")
+            )
+    finally:
+        await engine.dispose()
+
+    assert hold.id == ids.first_hold
+    assert hold.expires_at == now + timedelta(minutes=5)
+    assert active_count == 1
+
+
+class _FixtureIds:
+    user = UUID("00000000-0000-4000-8000-000000000001")
+    venue = UUID("00000000-0000-4000-8000-000000000010")
+    event = UUID("00000000-0000-4000-8000-000000000020")
+    seat = UUID("00000000-0000-4000-8000-000000000030")
+    event_seat = UUID("00000000-0000-4000-8000-000000000040")
+    first_hold = UUID("00000000-0000-4000-8000-000000000050")
+    second_hold = UUID("00000000-0000-4000-8000-000000000051")
+
+
+class _FixedClock:
+    def __init__(self, value: datetime) -> None:
+        self._value = value
+
+    def now(self) -> datetime:
+        return self._value
+
+
+async def _seed_event_seat(connection: object, ids: _FixtureIds, now: datetime) -> None:
+    await connection.execute(
+        text("INSERT INTO users (id, display_name) VALUES (:id, 'Demo User')"),
+        {"id": ids.user},
+    )
+    await connection.execute(
+        text("INSERT INTO venues (id, name) VALUES (:id, 'Test Hall')"),
+        {"id": ids.venue},
+    )
+    await connection.execute(
+        text(
+            "INSERT INTO events (id, venue_id, title, starts_at) "
+            "VALUES (:id, :venue_id, 'Test Event', :starts_at)"
+        ),
+        {"id": ids.event, "venue_id": ids.venue, "starts_at": now + timedelta(days=1)},
+    )
+    await connection.execute(
+        text(
+            "INSERT INTO seats (id, venue_id, section, row_label, seat_number) "
+            "VALUES (:id, :venue_id, 'Main', 'A', '1')"
+        ),
+        {"id": ids.seat, "venue_id": ids.venue},
+    )
+    await connection.execute(
+        text(
+            "INSERT INTO event_seats (id, event_id, seat_id, price_cents) "
+            "VALUES (:id, :event_id, :seat_id, 2500)"
+        ),
+        {"id": ids.event_seat, "event_id": ids.event, "seat_id": ids.seat},
+    )
+
+
+def _upgrade_database() -> None:
+    backend_directory = Path(__file__).resolve().parents[2]
+    alembic_config = Config(str(backend_directory / "alembic.ini"))
+    alembic_config.set_main_option("script_location", str(backend_directory / "migrations"))
+    command.upgrade(alembic_config, "head")

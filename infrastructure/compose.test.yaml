@@ -1,0 +1,19 @@
+name: seatsafe-test
+
+services:
+  postgres:
+    image: postgres:17.11-alpine3.24@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+    environment:
+      POSTGRES_DB: seatsafe_test
+      POSTGRES_USER: seatsafe
+      POSTGRES_PASSWORD: seatsafe
+    ports:
+      - "127.0.0.1:54329:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U seatsafe -d seatsafe_test"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    stop_grace_period: 5s

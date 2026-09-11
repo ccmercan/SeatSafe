@@ -1,0 +1,1 @@
+"""SeatSafe HTTP routes."""

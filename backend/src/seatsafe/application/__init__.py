@@ -1,0 +1,1 @@
+"""SeatSafe use cases."""
