@@ -4,7 +4,11 @@ SeatSafe is a native iOS event-seat reservation application and a production-sty
 
 ## Current status
 
-**Phase 1: reservation-core vertical slice in progress.** The foundation decisions are accepted. The FastAPI service now includes configuration, demo identity injection, correlation IDs, Problem Details responses, a health endpoint, the initial PostgreSQL migration, and `POST /v1/holds` through the route, service, repository, and transaction layers. Seat retrieval, confirmation, and concurrent request testing remain to be implemented.
+**Phase 1: reservation-core vertical slice in progress.** The FastAPI service now
+includes configuration, demo identity injection, correlation IDs, Problem Details
+responses, the initial PostgreSQL migration, deterministic demo seeding,
+`GET /v1/events/{event_id}/seats`, and `POST /v1/holds`. Reservation confirmation,
+idempotency, and controlled concurrent-request testing remain to be implemented.
 
 ## Why this project exists
 
@@ -34,6 +38,7 @@ Discover event -> inspect event -> select seat -> hold seat
 - [Learning plan](docs/learning-plan.md)
 - [Roadmap](docs/roadmap.md)
 - [Interview project defense](docs/interview-project-defense.md)
+- [Editable Excalidraw visual learning pack](docs/diagrams/README.md)
 - [ADR-001: Own the reservation backend](docs/decisions/001-own-the-reservation-backend.md)
 - [ADR-002: Manage client work with structured concurrency](docs/decisions/002-swift-structured-concurrency.md)
 - [ADR-003: Serialize seat transitions with row locks and constraints](docs/decisions/003-serialize-seat-transitions-with-row-locks.md)
@@ -44,6 +49,7 @@ Discover event -> inspect event -> select seat -> hold seat
 - [ADR-008: Inject a server-configured demo user in Phase 1](docs/decisions/008-inject-a-configured-demo-user.md)
 - [ADR-009: Standardize API errors with Problem Details](docs/decisions/009-standardize-api-problem-details.md)
 - [ADR-010: Use Docker Desktop for local containers](docs/decisions/010-use-docker-desktop-for-local-containers.md)
+- [ADR-011: Return one event-seat availability snapshot](docs/decisions/011-return-an-event-seat-availability-snapshot.md)
 
 ## Planned repository shape
 
@@ -63,4 +69,6 @@ This is a learning-first project. Major decisions are discussed, compared, recor
 
 ## Next decision
 
-Review ADR-001 and ADR-002, then decide the first vertical slice and the minimum supported iOS/Xcode environment. The first slice should prove one complete path without prematurely building the entire application.
+Define the reservation-confirmation API contract that implements accepted ADR-007:
+database-backed idempotency. ADR-002 remains proposed and will be reviewed before the
+native iOS phase begins.
