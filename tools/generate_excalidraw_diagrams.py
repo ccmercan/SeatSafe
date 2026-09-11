@@ -484,7 +484,35 @@ def data_model() -> list[dict[str, Any]]:
     return d.elements
 
 
+def master_learning_pack() -> list[dict[str, Any]]:
+    """Place every teaching diagram on one large canvas with unique element IDs."""
+
+    panels = [
+        (decision_map, 0, 0),
+        (backend_architecture, 2200, 0),
+        (lifecycle_and_race, 0, 1200),
+        (idempotency_flow, 2200, 1200),
+        (quality_strategy, 0, 2400),
+        (roadmap, 2200, 2400),
+        (data_model, 0, 3600),
+    ]
+    combined: list[dict[str, Any]] = []
+    next_id = 0
+    for build, offset_x, offset_y in panels:
+        for element in build():
+            next_id += 1
+            translated = element.copy()
+            translated["id"] = f"seatsafe-master-{next_id}"
+            translated["x"] += offset_x
+            translated["y"] += offset_y
+            translated["seed"] = 20000 + next_id
+            translated["versionNonce"] = 30000 + next_id
+            combined.append(translated)
+    return combined
+
+
 DIAGRAMS = {
+    "00-seatsafe-master-learning-pack.excalidraw": master_learning_pack,
     "01-decision-map.excalidraw": decision_map,
     "02-backend-architecture.excalidraw": backend_architecture,
     "03-seat-lifecycle-and-race.excalidraw": lifecycle_and_race,
