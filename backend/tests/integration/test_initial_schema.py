@@ -9,9 +9,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from seatsafe.application.holds import HoldService
+from seatsafe.application.seats import SeatQueryService
 from seatsafe.config import Settings
+from seatsafe.db.demo_seed import DEMO_EVENT_ID, DEMO_EVENT_SEAT_IDS, seed_demo_database
 from seatsafe.db.holds import SqlAlchemyHoldUnitOfWork
 from seatsafe.db.safety import require_test_database
+from seatsafe.db.seats import SqlAlchemySeatQueryRepository
 from seatsafe.db.session import create_database_engine, create_session_factory
 from seatsafe.domain.holds import SeatUnavailable
 
@@ -161,6 +164,64 @@ async def test_hold_service_creates_one_hold_and_rejects_the_next(
     assert hold.id == ids.first_hold
     assert hold.expires_at == now + timedelta(minutes=5)
     assert active_count == 1
+
+
+@pytest.mark.asyncio
+async def test_demo_seed_and_seat_query_report_ordered_database_state(
+    migrated_database: None,
+) -> None:
+    settings = Settings(environment="test")
+    await seed_demo_database(settings)
+    await seed_demo_database(settings)
+    engine = create_database_engine(settings)
+    now = datetime(2026, 9, 11, 12, 0, tzinfo=UTC)
+
+    try:
+        async with engine.begin() as connection:
+            await connection.execute(
+                text(
+                    "INSERT INTO seat_holds "
+                    "(id, event_seat_id, owner_id, status, created_at, expires_at) VALUES "
+                    "(:active_id, :active_seat_id, :owner_id, 'active', :created_at, :expires_at), "
+                    "(:confirmed_id, :confirmed_seat_id, :owner_id, 'confirmed', "
+                    ":created_at, :expires_at)"
+                ),
+                {
+                    "active_id": UUID("00000000-0000-4000-8000-000000000050"),
+                    "active_seat_id": DEMO_EVENT_SEAT_IDS[0],
+                    "confirmed_id": UUID("00000000-0000-4000-8000-000000000051"),
+                    "confirmed_seat_id": DEMO_EVENT_SEAT_IDS[1],
+                    "owner_id": _FixtureIds.user,
+                    "created_at": now,
+                    "expires_at": now + timedelta(minutes=5),
+                },
+            )
+            await connection.execute(
+                text(
+                    "INSERT INTO reservations "
+                    "(id, event_seat_id, hold_id, owner_id, status, confirmed_at) "
+                    "VALUES (:id, :event_seat_id, :hold_id, :owner_id, 'active', :confirmed_at)"
+                ),
+                {
+                    "id": UUID("00000000-0000-4000-8000-000000000060"),
+                    "event_seat_id": DEMO_EVENT_SEAT_IDS[1],
+                    "hold_id": UUID("00000000-0000-4000-8000-000000000051"),
+                    "owner_id": _FixtureIds.user,
+                    "confirmed_at": now,
+                },
+            )
+
+        service = SeatQueryService(
+            repository=SqlAlchemySeatQueryRepository(create_session_factory(engine)),
+            clock=_FixedClock(now),
+        )
+        seats = await service.list_event_seats(DEMO_EVENT_ID)
+    finally:
+        await engine.dispose()
+
+    assert [seat.event_seat_id for seat in seats] == list(DEMO_EVENT_SEAT_IDS)
+    assert [seat.number for seat in seats] == ["1", "2", "3"]
+    assert [seat.status for seat in seats] == ["held", "reserved", "available"]
 
 
 class _FixtureIds:

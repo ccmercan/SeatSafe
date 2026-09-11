@@ -44,7 +44,7 @@ Evidence to add:
 
 ### How will integration tests remain deterministic?
 
-Status: ADR-004 accepted on 2026-09-11; implementation evidence remains pending.
+Status: ADR-004 accepted; disposable migration, guarded repeated seeding, and repository integration evidence completed on 2026-09-11. Concurrent-connection evidence remains pending.
 
 Draft answer:
 
@@ -54,12 +54,12 @@ Evidence to add:
 
 - Environment startup and teardown commands
 - Migration command and result
-- Repeatability or randomized-order test result
+- Repeated deterministic seed result: included in the 28-test checkpoint
 - Unsafe-target rejection test
 
 ### How is the backend organized?
 
-Status: ADR-005 accepted on 2026-09-11; implementation evidence remains pending.
+Status: ADR-005 accepted; hold creation and seat retrieval now provide implemented request traces through their layers.
 
 Draft answer:
 
@@ -67,10 +67,10 @@ Draft answer:
 
 Evidence to add:
 
-- One implemented request trace from route to commit
-- Service unit tests
-- API contract tests
-- PostgreSQL repository integration tests
+- Hold request trace from route through service/repository to commit
+- Seat snapshot trace from route through service to the read repository
+- Service unit tests and API contract tests
+- PostgreSQL repository integration tests; 28-test checkpoint on 2026-09-11
 
 ### Why are holds and reservations separate records?
 
@@ -218,4 +218,5 @@ Record a metric only with reproducible evidence:
 | PostgreSQL container readiness | Healthy; query returned PostgreSQL 17.11 | Docker Desktop 29.7.2, Compose 5.5.1, Apple Silicon | `docker compose -f infrastructure/compose.test.yaml up -d --wait` followed by the documented `psql` readiness query | 2026-09-11 |
 | Backend unit and API checkpoint | 9 passed; 1 integration test deselected | Project `.venv`, Python 3.12.0, pytest 9.1.1 | `cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -p pytest_asyncio.plugin -m 'not integration' -v` | 2026-09-11 |
 | Initial schema integration checkpoint | 1 passed in 1.15 s | PostgreSQL 17.11 disposable container | `cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -p pytest_asyncio.plugin -m integration -v` | 2026-09-11 |
+| Seat retrieval vertical-slice checkpoint | 28 passed in 0.96 s; 2 dependency warnings | PostgreSQL 17.11 disposable container, macOS, Python 3.12.0 | `cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /private/tmp/seatsafe-venv/bin/python -m pytest -p pytest_asyncio.plugin -q` | 2026-09-11 |
 | Hold-creation checkpoint | 19 passed in 0.71 s; 2 dependency deprecation warnings | PostgreSQL 17.11, Python 3.12.0, non-synced temporary virtual environment | `cd backend && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /private/tmp/seatsafe-venv/bin/python -m pytest -p pytest_asyncio.plugin -q` | 2026-09-11 |

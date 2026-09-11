@@ -19,7 +19,7 @@ Exit condition: the owner reviews the documents and accepts or revises ADR-001.
 
 ## Phase 1: Reservation-core vertical slice
 
-Status: in progress. The backend foundation, disposable PostgreSQL environment, initial schema migration, and hold-creation route/service/repository path were created on 2026-09-11. Seat retrieval, confirmation, deterministic demo seeding, and concurrent request testing remain pending.
+Status: in progress. The backend foundation, disposable PostgreSQL environment, initial schema migration, hold creation, deterministic demo seeding, and seat-retrieval snapshot were created on 2026-09-11. Reservation confirmation, idempotency, and concurrent request testing remain pending.
 
 Scope:
 

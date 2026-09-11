@@ -80,7 +80,32 @@ Disabling automatic discovery prevents unrelated globally installed pytest plugi
 
 A successful request returns `201 Created` with the hold ID, active status, and expiration time. Missing seats return `resource_not_found`; seats with active holds or reservations return `seat_unavailable` using the Problem Details contract.
 
-The database currently starts empty after migration. A documented deterministic seed command will be added with the seat-retrieval slice before this endpoint is used as a manual demo.
+After applying the migration, replace the disposable database contents with the stable
+manual-demo scenario:
+
+```bash
+SEATSAFE_ENVIRONMENT=test .venv/bin/python -m seatsafe.db.demo_seed
+```
+
+The command deliberately requires both `environment=test` and a database name ending
+in `_test`. It refuses other targets because it clears existing rows before inserting
+the stable scenario. The seeded identifiers are:
+
+```text
+event:      00000000-0000-4000-8000-000000000020
+event seat: 00000000-0000-4000-8000-000000000040
+event seat: 00000000-0000-4000-8000-000000000041
+event seat: 00000000-0000-4000-8000-000000000042
+```
+
+Retrieve the ordered availability snapshot:
+
+```bash
+curl http://127.0.0.1:8000/v1/events/00000000-0000-4000-8000-000000000020/seats
+```
+
+This response is a snapshot, not a reservation. Another request may claim a seat after
+it is read, so `POST /v1/holds` still locks the event-seat row and re-checks availability.
 
 Once the project dependencies are installed, run the API with:
 
