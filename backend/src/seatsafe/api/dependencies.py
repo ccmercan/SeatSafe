@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from seatsafe.application.holds import HoldService, HoldUnitOfWork
+from seatsafe.application.reservations import ReservationService, ReservationUnitOfWork
 from seatsafe.application.seats import SeatQueryService
 from seatsafe.config import Settings, get_settings
 from seatsafe.db.holds import SqlAlchemyHoldUnitOfWork
@@ -33,4 +34,16 @@ def get_seat_query_service(request: Request) -> SeatQueryService:
     return SeatQueryService(
         repository=SqlAlchemySeatQueryRepository(request.app.state.session_factory),
         clock=SystemClock(),
+    )
+
+
+def get_reservation_service(request: Request) -> ReservationService:
+    unit_of_work_factory: Callable[[], ReservationUnitOfWork] = partial(
+        SqlAlchemyHoldUnitOfWork,
+        request.app.state.session_factory,
+    )
+    return ReservationService(
+        unit_of_work_factory=unit_of_work_factory,
+        clock=SystemClock(),
+        id_factory=generate_id,
     )

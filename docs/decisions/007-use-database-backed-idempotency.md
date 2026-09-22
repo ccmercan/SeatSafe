@@ -65,14 +65,29 @@ Disadvantages:
 
 Choose **Option C** for reservation confirmation.
 
-- The confirmation API requires an idempotency key.
+- The confirmation API is `POST /v1/reservations`. Its JSON body contains `hold_id`, and
+  its HTTP `Idempotency-Key` header contains the stable key for the logical attempt.
+- A missing, empty, or over-255-character key is a request-validation failure.
 - The database uniquely scopes the key by owner identity and operation type.
 - The record contains a stable fingerprint of the request fields that affect the operation.
-- Repeating a completed request with the same key and fingerprint returns the same logical reservation result.
+- Repeating a completed request with the same key and fingerprint returns the original
+  `201 Created` status and JSON response body. The API does not add a replay-only field,
+  so the response contract remains identical.
 - Reusing the key with a different fingerprint returns a defined client error and performs no new reservation operation.
 - Concurrent requests using the same new key are coordinated by a database uniqueness constraint and transaction behavior.
 - Creation of the reservation and completion of its idempotency record occur atomically: both commit or both roll back.
 - The active-reservation constraint remains independent defense against competing requests that use different keys.
+
+For Phase 1, the request fingerprint covers the `hold_id`, the only business input to
+confirmation. If confirmation later gains additional fields that change its meaning,
+those fields must be added to canonical fingerprint input and tests.
+
+Before recording the key, PostgreSQL takes a transaction-scoped advisory lock for the
+owner, operation, and idempotency key. This makes two simultaneous first uses of one key
+wait for the first transaction's result, including when they name different holds. After
+the key is clear, the service locks the relevant `EventSeat` row to serialize different
+confirmation keys that target one seat. Both locks are released automatically at commit
+or rollback.
 
 For example, if Alice confirms hold `H1` using key `K1` and the response is lost, retrying `H1` with `K1` returns Alice's original reservation. Trying to confirm a different hold `H2` with `K1` is rejected because the receipt number was reused for a different operation.
 
@@ -85,6 +100,7 @@ Database-backed records give the client a stable answer after ambiguous delivery
 ## Consequences
 
 - Confirmation callers must generate and retain one stable key for all retries of a logical action.
+- The key is sent in `Idempotency-Key`; the request body remains reservation data only.
 - The server must canonicalize relevant request data before computing its fingerprint.
 - Logs should include the idempotency key and correlation identifier without recording sensitive data.
 - Service tests must cover same-key replay and changed-payload rejection.
@@ -102,6 +118,7 @@ Before this decision is considered successfully implemented:
 5. Simultaneous different-key requests for one seat still produce at most one active reservation.
 6. A forced transaction failure leaves neither a partial reservation nor a completed idempotency result.
 7. The owner can explain why idempotency and uniqueness solve different problems.
+8. The owner can explain why the idempotency-key lock and seat-row lock protect different scopes.
 
 ## Revisit triggers
 
@@ -114,4 +131,3 @@ Reconsider this decision if:
 ## Owner review
 
 Accepted by the project owner on 2026-09-11.
-

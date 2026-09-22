@@ -214,7 +214,7 @@ def decision_map() -> list[dict[str, Any]]:
 
     d.card(445, 210, 300, 135, "ADR-003 · Accepted", "Serialize seat changes with\nrow locks + constraints", fill=WHITE)
     d.card(445, 380, 300, 135, "ADR-006 · Accepted", "Keep EventSeat, SeatHold, and\nReservation as separate records", fill=WHITE)
-    d.card(445, 550, 300, 150, "ADR-007 · Accepted", "Store idempotency results so\nsafe retries get the same answer\n(not implemented yet)", fill=WHITE)
+    d.card(445, 550, 300, 150, "ADR-007 · Implemented", "Store idempotency results so\nsafe retries get the same answer", fill=WHITE)
 
     d.card(825, 210, 300, 135, "ADR-005 · Accepted", "Thin HTTP routes → services →\nPostgreSQL repositories", fill=WHITE)
     d.card(825, 380, 300, 135, "ADR-008 · Accepted", "Inject one server-configured\ndemo user in Phase 1", fill=WHITE)
@@ -343,7 +343,7 @@ def idempotency_flow() -> list[dict[str, Any]]:
     heading(
         d,
         "Reservation confirmation and idempotency",
-        "Accepted design from ADR-007. This flow is planned next; it is not implemented yet.",
+        "Implemented confirmation path. The code and PostgreSQL integration tests demonstrate this flow.",
     )
 
     d.card(70, 190, 270, 140, "Client", "Hold H1\nIdempotency key K1\nPOST /reservations", fill=BLUE)
@@ -401,7 +401,7 @@ def quality_strategy() -> list[dict[str, Any]]:
     d.text(
         110,
         825,
-        "28 tests passed at the seat-retrieval checkpoint. They prove current rules, API contracts, migrations, constraints, deterministic seed behavior, and repository queries.\nThey do not yet prove simultaneous-request behavior, reservation confirmation, iOS behavior, CI behavior, performance, or production scale.",
+        "39 backend tests passed, including PostgreSQL confirmation races for same-key retries and competing keys on one hold. A broader competing-hold race, forced transaction rollback, iOS behavior, CI behavior, performance, and production scale are not yet proven.",
         size=18,
         color=MUTED,
     )

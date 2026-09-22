@@ -19,3 +19,23 @@ class EventSeatNotFound(Exception):
 
 class SeatUnavailable(Exception):
     pass
+
+
+class HoldNotFound(Exception):
+    pass
+
+
+class HoldOwnerMismatch(Exception):
+    pass
+
+
+class HoldExpired(Exception):
+    pass
+
+
+class HoldNotActive(Exception):
+    pass
+
+
+class IdempotencyKeyReused(Exception):
+    pass

@@ -12,6 +12,8 @@ The current scaffold provides:
 - RFC 9457-style Problem Details responses with stable SeatSafe codes
 - A process-health endpoint at `GET /health`
 - A hold-creation endpoint at `POST /v1/holds`
+- A reservation-confirmation endpoint at `POST /v1/reservations` with database-backed
+  idempotent retries
 - A service-owned transaction that locks the event-seat row
 - Expired-hold replacement and active-hold or reservation rejection
 - Focused API, application, unit, and PostgreSQL integration tests
@@ -106,6 +108,21 @@ curl http://127.0.0.1:8000/v1/events/00000000-0000-4000-8000-000000000020/seats
 
 This response is a snapshot, not a reservation. Another request may claim a seat after
 it is read, so `POST /v1/holds` still locks the event-seat row and re-checks availability.
+
+Confirm a hold using a client-generated key that remains stable for retries of this
+confirmation attempt:
+
+```bash
+curl --request POST http://127.0.0.1:8000/v1/reservations \
+  --header 'Content-Type: application/json' \
+  --header 'Idempotency-Key: demo-confirmation-001' \
+  --data '{"hold_id":"00000000-0000-4000-8000-000000000050"}'
+```
+
+The first successful request returns `201 Created`. Retrying the same `hold_id` with
+the same key returns the original `201` response body. Reusing the key for a different
+hold returns `409 idempotency_key_reused`. A hold that is expired or belongs to another
+demo identity cannot be confirmed.
 
 Once the project dependencies are installed, run the API with:
 

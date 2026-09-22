@@ -20,7 +20,7 @@ Draft answer:
 
 > I considered a commercial ticketing API, a public event feed, and a local service. The project required deterministic test data, state reset, controlled failures, and visibility into transaction behavior. A third-party API would make those tests dependent on mutable inventory and provider availability. I chose to own a small FastAPI and PostgreSQL backend, while keeping the event source behind a boundary that could support a read-only provider later.
 
-Evidence to add:
+Remaining evidence to add:
 
 - Accepted ADR link
 - Seed/reset command
@@ -29,7 +29,7 @@ Evidence to add:
 
 ### How will the system prevent double booking?
 
-Status: ADR-003 accepted on 2026-09-11; implementation evidence remains pending.
+Status: ADR-003 accepted; hold and confirmation use event-seat row locks. A controlled competing-request integration result remains pending.
 
 Draft answer:
 
@@ -74,7 +74,7 @@ Evidence to add:
 
 ### Why are holds and reservations separate records?
 
-Status: ADR-006 accepted on 2026-09-11; implementation evidence remains pending.
+Status: ADR-006 accepted; the schema and hold/confirmation transitions use separate hold and reservation records.
 
 Draft answer:
 
@@ -89,18 +89,16 @@ Evidence to add:
 
 ### How does confirmation remain safe when a request is retried?
 
-Status: ADR-007 accepted on 2026-09-11; implementation evidence remains pending.
+Status: ADR-007 accepted; the HTTP header contract, confirmation service, and PostgreSQL same-hold concurrency evidence are implemented (39 backend tests passed on 2026-09-22).
 
 Draft answer:
 
 > The client supplies one stable idempotency key for a logical confirmation attempt. PostgreSQL stores that key with a fingerprint of the request and the logical result. A retry with the same key and input receives the original reservation result, while reuse with different input is rejected. This is separate from the active-reservation constraint: idempotency gives one request a stable answer, while the seat constraint protects against competing requests that use different keys.
 
-Evidence to add:
+Remaining evidence to add:
 
-- Confirmation API contract
-- Same-key replay test
-- Changed-payload rejection test
-- Concurrent same-key and different-key test results
+- Forced transaction failure proving reservation and idempotency record roll back together
+- Broader PostgreSQL contention test with independently created competing holds
 
 ### How does Phase 1 identify the current user?
 

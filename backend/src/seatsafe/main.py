@@ -6,6 +6,7 @@ from seatsafe.api.correlation import CorrelationIdMiddleware
 from seatsafe.api.problem_details import install_problem_handlers
 from seatsafe.api.routes.health import router as health_router
 from seatsafe.api.routes.holds import router as holds_router
+from seatsafe.api.routes.reservations import router as reservations_router
 from seatsafe.api.routes.seats import router as seats_router
 from seatsafe.config import Settings, get_settings
 from seatsafe.db.session import create_database_engine, create_session_factory
@@ -37,6 +38,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health_router)
     app.include_router(seats_router)
     app.include_router(holds_router)
+    app.include_router(reservations_router)
     return app
 
 
