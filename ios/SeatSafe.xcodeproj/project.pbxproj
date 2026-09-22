@@ -8,6 +8,7 @@
 /* Begin PBXBuildFile section */
 		A10000000000000000000001 /* SeatSafeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* SeatSafeApp.swift */; };
 		A10000000000000000000002 /* SeatListModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* SeatListModelTests.swift */; };
+		A10000000000000000000003 /* HoldCreation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* HoldCreation.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -20,6 +21,7 @@
 		A20000000000000000000003 /* SeatSafe.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SeatSafe.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000004 /* SeatSafeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SeatSafeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A20000000000000000000006 /* HoldCreation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoldCreation.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -29,7 +31,7 @@
 
 /* Begin PBXGroup section */
 		A70000000000000000000001 = {isa = PBXGroup; children = (A70000000000000000000002, A70000000000000000000003, A70000000000000000000004, ); sourceTree = "<group>"; };
-		A70000000000000000000002 /* SeatSafe */ = {isa = PBXGroup; children = (A20000000000000000000001, A20000000000000000000005, ); path = SeatSafe; sourceTree = "<group>"; };
+		A70000000000000000000002 /* SeatSafe */ = {isa = PBXGroup; children = (A20000000000000000000001, A20000000000000000000005, A20000000000000000000006, ); path = SeatSafe; sourceTree = "<group>"; };
 		A70000000000000000000003 /* SeatSafeTests */ = {isa = PBXGroup; children = (A20000000000000000000002, ); path = SeatSafeTests; sourceTree = "<group>"; };
 		A70000000000000000000004 /* Products */ = {isa = PBXGroup; children = (A20000000000000000000003, A20000000000000000000004, ); name = Products; sourceTree = "<group>"; };
 /* End PBXGroup section */
@@ -44,7 +46,7 @@
 /* End PBXProject section */
 
 /* Begin PBXSourcesBuildPhase section */
-		A90000000000000000000001 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001, ); runOnlyForDeploymentPostprocessing = 0; };
+		A90000000000000000000001 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001, A10000000000000000000003, ); runOnlyForDeploymentPostprocessing = 0; };
 		A90000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000002, ); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 

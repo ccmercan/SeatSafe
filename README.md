@@ -15,7 +15,9 @@ failure. Hold creation's idempotency extension is recorded in ADR-014. Phase 2 h
 ADR-002 accepts Swift structured concurrency,
 ADR-012 sets the iOS 17 deployment target, and ADR-013 selects lightweight SwiftUI feature
 models with injected async services. The client can load the seat snapshot and locally
-select one available seat; creating a server hold is the next client behavior.
+select one available seat, create a server hold, and safely retry an uncertain hold request
+using the persisted seat/key pair described by ADR-015. Reservation confirmation is the
+next client behavior.
 
 ## Why this project exists
 
@@ -60,6 +62,7 @@ Discover event -> inspect event -> select seat -> hold seat
 - [ADR-012: Set the minimum iOS deployment target to iOS 17](docs/decisions/012-set-ios-deployment-target.md)
 - [ADR-013: Use lightweight SwiftUI feature models](docs/decisions/013-use-lightweight-swiftui-feature-models.md)
 - [ADR-014: Use database-backed idempotency for hold creation](docs/decisions/014-use-idempotency-for-hold-creation.md)
+- [ADR-015: Persist pending hold attempts locally](docs/decisions/015-persist-pending-hold-attempt-locally.md)
 
 ## Planned repository shape
 
@@ -79,9 +82,8 @@ This is a learning-first project. Major decisions are discussed, compared, recor
 
 ## Current implementation slice
 
-The client architecture is set by ADR-013. Seat loading and local selection are
-implemented. ADR-014 now makes `POST /v1/holds` safe to retry using a stable request key;
-the next step is choosing where the iOS client will retain that key while a hold attempt is
-in progress, then wiring the hold action. The database permits only one active hold per
-event-seat, so the seat row lock remains necessary even with idempotency: different
-customers use different keys while competing for the same seat.
+The client architecture is set by ADR-013. Seat loading, local selection, hold creation,
+and recovery using a persisted attempt key are implemented. The next client step is
+confirmation. The database permits only one active hold per event-seat, so the seat row
+lock remains necessary even with idempotency: different customers use different keys
+while competing for the same seat.

@@ -50,7 +50,8 @@ struct HTTPSeatService: SeatService {
         let url = baseURL.appending(path: "v1/events/\(eventID.uuidString.lowercased())/seats")
         let (data, response) = try await session.data(from: url)
         guard let response = response as? HTTPURLResponse,
-              (200..<300).contains(response.statusCode) else {
+            (200..<300).contains(response.statusCode)
+        else {
             throw SeatServiceError.invalidResponse
         }
         return try JSONDecoder().decode(SeatSnapshot.self, from: data).seats
@@ -70,16 +71,45 @@ final class SeatListModel {
         case failed
     }
 
+    enum HoldState: Equatable {
+        case idle
+        case creating
+        case uncertain
+        case created(CreatedHold)
+        case unavailable
+        case keyRejected
+        case failed(statusCode: Int)
+    }
+
     private(set) var state: State = .idle
     private(set) var selectedSeatID: UUID?
+    private(set) var holdState: HoldState
     private let service: any SeatService
+    private let holdService: any HoldService
+    private let pendingAttemptStore: any PendingHoldAttemptStore
+    private let idempotencyKeyFactory: () -> String
+    private(set) var pendingAttempt: PendingHoldAttempt?
+    private var currentEventID: UUID?
 
-    init(service: any SeatService) {
+    init(
+        service: any SeatService,
+        holdService: any HoldService,
+        pendingAttemptStore: any PendingHoldAttemptStore = UserDefaultsPendingHoldAttemptStore(),
+        idempotencyKeyFactory: @escaping () -> String = { UUID().uuidString.lowercased() }
+    ) {
         self.service = service
+        self.holdService = holdService
+        self.pendingAttemptStore = pendingAttemptStore
+        self.idempotencyKeyFactory = idempotencyKeyFactory
+        let restoredAttempt = pendingAttemptStore.load()
+        pendingAttempt = restoredAttempt
+        selectedSeatID = restoredAttempt?.eventSeatID
+        holdState = restoredAttempt == nil ? .idle : .uncertain
     }
 
     func load(eventID: UUID) async {
-        selectedSeatID = nil
+        currentEventID = eventID
+        selectedSeatID = pendingAttempt?.eventSeatID
         state = .loading
         do {
             state = .loaded(try await service.seats(for: eventID))
@@ -95,20 +125,90 @@ final class SeatListModel {
         return seats.first { $0.id == selectedSeatID }
     }
 
+    var hasCreatedHold: Bool {
+        if case .created = holdState { return true }
+        return false
+    }
+
+    var canCreateHold: Bool {
+        guard let selectedSeat, holdState != .creating, !hasCreatedHold else { return false }
+        if case .keyRejected = holdState { return false }
+        if pendingAttempt != nil { return true }
+        return selectedSeat.status == .available && holdState != .unavailable
+    }
+
     func toggleSelection(for seatID: UUID) {
+        // Keep an unknown attempt stable and keep a successful hold for the next flow step.
+        guard pendingAttempt == nil, !hasCreatedHold else { return }
         guard case .loaded(let seats) = state,
-              let seat = seats.first(where: { $0.id == seatID }),
-              seat.status == .available else {
+            let seat = seats.first(where: { $0.id == seatID }),
+            seat.status == .available
+        else {
             return
         }
 
         selectedSeatID = selectedSeatID == seatID ? nil : seatID
+        holdState = .idle
+    }
+
+    func createHold() async {
+        guard let selectedSeat, canCreateHold else { return }
+
+        let attempt =
+            pendingAttempt
+            ?? PendingHoldAttempt(
+                eventSeatID: selectedSeat.id,
+                idempotencyKey: idempotencyKeyFactory()
+            )
+        if pendingAttempt == nil {
+            // Persist before sending: the request might succeed even if its reply is lost.
+            pendingAttemptStore.save(attempt)
+            pendingAttempt = attempt
+        }
+
+        holdState = .creating
+        do {
+            let hold = try await holdService.createHold(
+                for: attempt.eventSeatID,
+                idempotencyKey: attempt.idempotencyKey
+            )
+            pendingAttemptStore.clear()
+            pendingAttempt = nil
+            holdState = .created(hold)
+        } catch is CancellationError {
+            // Cancelling a local Swift task does not prove the server stopped processing.
+            holdState = .uncertain
+        } catch let error as HoldServiceError {
+            switch error {
+            case .seatUnavailable:
+                pendingAttemptStore.clear()
+                pendingAttempt = nil
+                holdState = .unavailable
+                // Refresh the snapshot so the stale seat does not still look available.
+                if let currentEventID,
+                    let refreshedSeats = try? await service.seats(for: currentEventID)
+                {
+                    state = .loaded(refreshedSeats)
+                }
+            case .idempotencyKeyReused:
+                holdState = .keyRejected
+            case .rejected(let statusCode):
+                // Conservatively keep the key: a server error can follow a committed write.
+                holdState = .failed(statusCode: statusCode)
+            case .invalidResponse:
+                holdState = .uncertain
+            }
+        } catch {
+            // A transport error is ambiguous; retry the persisted pair, never a new key.
+            holdState = .uncertain
+        }
     }
 }
 
 struct SeatListView: View {
     @State private var model = SeatListModel(
-        service: HTTPSeatService(baseURL: URL(string: "http://127.0.0.1:8000")!)
+        service: HTTPSeatService(baseURL: URL(string: "http://127.0.0.1:8000")!),
+        holdService: HTTPHoldService(baseURL: URL(string: "http://127.0.0.1:8000")!)
     )
 
     var body: some View {
@@ -151,21 +251,34 @@ struct SeatListView: View {
                             .padding(.vertical, 4)
                         }
                         .buttonStyle(.plain)
-                        .disabled(seat.status != .available)
+                        .disabled(
+                            seat.status != .available
+                                || model.pendingAttempt != nil
+                                || model.hasCreatedHold
+                        )
                         .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("\(seat.displayName), \(seat.status.rawValue), \(seat.price)")
+                        .accessibilityLabel(
+                            "\(seat.displayName), \(seat.status.rawValue), \(seat.price)"
+                        )
                         .accessibilityValue(isSelected ? "Selected" : "Not selected")
                         .accessibilityIdentifier("seat-row.\(seat.id.uuidString.lowercased())")
                     }
                     .accessibilityIdentifier("seat-list.results")
                     .safeAreaInset(edge: .bottom) {
                         if let selectedSeat = model.selectedSeat {
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: 8) {
                                 Text("Selected: \(selectedSeat.displayName)")
                                     .font(.headline)
-                                Text("This is only a local selection; the seat is not held yet.")
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
+                                holdStatus(for: model.holdState)
+                                if model.canCreateHold {
+                                    Button(model.pendingAttempt == nil ? "Hold seat" : "Retry hold")
+                                    {
+                                        Task { await model.createHold() }
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(model.holdState == .creating)
+                                    .accessibilityIdentifier("seat-selection.hold")
+                                }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding()
@@ -178,6 +291,48 @@ struct SeatListView: View {
             .navigationTitle("Demo Event Seats")
         }
         .task { await model.load(eventID: demoEventID) }
+    }
+
+    @ViewBuilder
+    private func holdStatus(for state: SeatListModel.HoldState) -> some View {
+        switch state {
+        case .idle:
+            Text(
+                "Selection only so far. Choose Hold seat to ask the server to reserve it temporarily."
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        case .creating:
+            ProgressView("Asking the server to hold this seat…")
+        case .uncertain:
+            Text(
+                "We couldn’t confirm the result. Retry safely: the app will reuse the same request key."
+            )
+            .font(.footnote)
+            .foregroundStyle(.orange)
+            .accessibilityIdentifier("seat-selection.uncertain")
+        case .created(let hold):
+            Text("Seat held until \(hold.expiresAt). Hold ID: \(hold.id.uuidString)")
+                .font(.footnote)
+                .foregroundStyle(.green)
+                .accessibilityIdentifier("seat-selection.created")
+        case .unavailable:
+            Text("This seat is no longer available. Choose another available seat.")
+                .font(.footnote)
+                .foregroundStyle(.orange)
+        case .keyRejected:
+            Text(
+                "The saved retry key conflicts with another request. The same key is being preserved for safety."
+            )
+            .font(.footnote)
+            .foregroundStyle(.red)
+        case .failed(let statusCode):
+            Text(
+                "The server returned HTTP \(statusCode). You can retry safely with the saved request key."
+            )
+            .font(.footnote)
+            .foregroundStyle(.orange)
+        }
     }
 }
 

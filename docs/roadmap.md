@@ -43,9 +43,10 @@ Exit condition: met. PostgreSQL concurrency tests demonstrate one valid hold win
 Status: in progress. ADR-002 selects Swift structured concurrency and main-actor feature
 state; ADR-012 sets the iOS deployment target to 17; ADR-013 selects lightweight SwiftUI
 feature models with injected async services. Seat-snapshot loading and local selection
-of one available seat are implemented and unit tested. ADR-014 has defined backend retry
-behavior for creating a server-side hold. Before wiring that action, choose how the iOS
-client will retain the pending attempt key and seat when the flow is interrupted.
+of one available seat are implemented and unit tested. ADR-014 defines database-backed
+retry behavior for creating a server-side hold; ADR-015 chooses UserDefaults to preserve
+the client attempt across flow exits and app restarts. Hold creation and ambiguous-result
+recovery are now implemented. The next client step is confirming a hold as a reservation.
 
 Scope:
 
