@@ -1,0 +1,71 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* SeatSafeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* SeatSafeApp.swift */; };
+		A10000000000000000000002 /* SeatListModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* SeatListModelTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A30000000000000000000001 /* PBXContainerItemProxy */ = {isa = PBXContainerItemProxy; containerPortal = A40000000000000000000001; proxyType = 1; remoteGlobalIDString = A50000000000000000000001; remoteInfo = SeatSafe; };
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000001 /* SeatSafeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeatSafeApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* SeatListModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeatListModelTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* SeatSafe.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SeatSafe.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000004 /* SeatSafeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SeatSafeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A60000000000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A60000000000000000000002 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A70000000000000000000001 = {isa = PBXGroup; children = (A70000000000000000000002, A70000000000000000000003, A70000000000000000000004, ); sourceTree = "<group>"; };
+		A70000000000000000000002 /* SeatSafe */ = {isa = PBXGroup; children = (A20000000000000000000001, A20000000000000000000005, ); path = SeatSafe; sourceTree = "<group>"; };
+		A70000000000000000000003 /* SeatSafeTests */ = {isa = PBXGroup; children = (A20000000000000000000002, ); path = SeatSafeTests; sourceTree = "<group>"; };
+		A70000000000000000000004 /* Products */ = {isa = PBXGroup; children = (A20000000000000000000003, A20000000000000000000004, ); name = Products; sourceTree = "<group>"; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A50000000000000000000001 /* SeatSafe */ = {isa = PBXNativeTarget; buildConfigurationList = A80000000000000000000001; buildPhases = (A60000000000000000000001, A90000000000000000000001, ); buildRules = (); dependencies = (); name = SeatSafe; productName = SeatSafe; productReference = A20000000000000000000003; productType = "com.apple.product-type.application"; };
+		A50000000000000000000002 /* SeatSafeTests */ = {isa = PBXNativeTarget; buildConfigurationList = A80000000000000000000002; buildPhases = (A60000000000000000000002, A90000000000000000000002, ); buildRules = (); dependencies = (A30000000000000000000002, ); name = SeatSafeTests; productName = SeatSafeTests; productReference = A20000000000000000000004; productType = "com.apple.product-type.bundle.unit-test"; };
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A40000000000000000000001 /* Project object */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastUpgradeCheck = 2640; TargetAttributes = {A50000000000000000000001 = {CreatedOnToolsVersion = 26.4; }; A50000000000000000000002 = {CreatedOnToolsVersion = 26.4; TestTargetID = A50000000000000000000001; }; }; }; buildConfigurationList = A80000000000000000000003; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; mainGroup = A70000000000000000000001; productRefGroup = A70000000000000000000004; projectDirPath = ""; projectRoot = ""; targets = (A50000000000000000000001, A50000000000000000000002, ); };
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A90000000000000000000001 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001, ); runOnlyForDeploymentPostprocessing = 0; };
+		A90000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000002, ); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A30000000000000000000002 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A50000000000000000000001; targetProxy = A30000000000000000000001; };
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		AB0000000000000000000001 /* Debug project */ = {isa = XCBuildConfiguration; buildSettings = {IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_VERSION = 6.0; }; name = Debug; };
+		AB0000000000000000000002 /* Release project */ = {isa = XCBuildConfiguration; buildSettings = {IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_VERSION = 6.0; }; name = Release; };
+		AB0000000000000000000003 /* Debug app */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = NO; ENABLE_TESTABILITY = YES; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = SeatSafe/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = com.ccmercan.SeatSafe; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
+		AB0000000000000000000004 /* Release app */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = NO; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = SeatSafe/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = com.ccmercan.SeatSafe; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Release; };
+		AB0000000000000000000005 /* Debug tests */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGNING_ALLOWED = NO; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = com.ccmercan.SeatSafeTests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = "1,2"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SeatSafe.app/SeatSafe"; }; name = Debug; };
+		AB0000000000000000000006 /* Release tests */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGNING_ALLOWED = NO; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = com.ccmercan.SeatSafeTests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = "1,2"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SeatSafe.app/SeatSafe"; }; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A80000000000000000000001 = {isa = XCConfigurationList; buildConfigurations = (AB0000000000000000000003, AB0000000000000000000004, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A80000000000000000000002 = {isa = XCConfigurationList; buildConfigurations = (AB0000000000000000000005, AB0000000000000000000006, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A80000000000000000000003 = {isa = XCConfigurationList; buildConfigurations = (AB0000000000000000000001, AB0000000000000000000002, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = A40000000000000000000001 /* Project object */;
+}

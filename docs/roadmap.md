@@ -41,8 +41,9 @@ Exit condition: met. PostgreSQL concurrency tests demonstrate one valid hold win
 ## Phase 2: Native iOS vertical slice
 
 Status: in progress. ADR-002 selects Swift structured concurrency and main-actor feature
-state; ADR-012 sets the iOS deployment target to 17. The Xcode project and SwiftUI client
-have not yet been created.
+state; ADR-012 sets the iOS deployment target to 17; ADR-013 selects lightweight SwiftUI
+feature models with injected async services. The first vertical slice is loading the
+existing seat-availability snapshot.
 
 Scope:
 

@@ -147,6 +147,24 @@ Evidence to add:
 
 ## Questions to answer as the project develops
 
+### Why use lightweight SwiftUI feature models?
+
+Status: ADR-013 accepted and the first seat-loading slice is implemented. Simulator test
+execution remains pending a working CoreSimulator runtime.
+
+Draft answer:
+
+> The view is responsible for rendering state, the `@Observable @MainActor` model owns
+> screen state, and an injected async `SeatService` performs the network operation. This
+> gives me a test seam without adding use-case and repository layers before the app needs
+> them. I can test the model with a deterministic fake and decode the backend response
+> contract independently. If a feature model grows multiple unrelated responsibilities,
+> I can split it based on that evidence rather than adding layers in advance.
+
+Evidence: [ADR-013](decisions/013-use-lightweight-swiftui-feature-models.md),
+[Phase 2 seat-loading evidence](evidence/phase-2-seat-loading.md), and
+`ios/SeatSafeTests/SeatListModelTests.swift`.
+
 ### Product and scope
 
 - Why is the application intentionally small?

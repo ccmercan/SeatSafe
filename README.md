@@ -11,9 +11,9 @@ initial PostgreSQL migration, deterministic demo seeding,
 `POST /v1/reservations` with database-backed idempotency. PostgreSQL tests cover
 competing hold requests, same-key replay, different-key confirmation attempts, and
 transaction rollback after a real database constraint failure. The full backend suite
-passes with 41 tests. Phase 2 has started: ADR-002 is accepted and ADR-012 sets the iOS 17
-deployment target. The next client decision is the smallest architecture boundary for the
-first SwiftUI vertical slice.
+passes with 41 tests. Phase 2 has started: ADR-002 accepts Swift structured concurrency,
+ADR-012 sets the iOS 17 deployment target, and ADR-013 selects lightweight SwiftUI feature
+models with injected async services. The first client slice is seat-snapshot loading.
 
 ## Why this project exists
 
@@ -56,10 +56,11 @@ Discover event -> inspect event -> select seat -> hold seat
 - [ADR-010: Use Docker Desktop for local containers](docs/decisions/010-use-docker-desktop-for-local-containers.md)
 - [ADR-011: Return one event-seat availability snapshot](docs/decisions/011-return-an-event-seat-availability-snapshot.md)
 - [ADR-012: Set the minimum iOS deployment target to iOS 17](docs/decisions/012-set-ios-deployment-target.md)
+- [ADR-013: Use lightweight SwiftUI feature models](docs/decisions/013-use-lightweight-swiftui-feature-models.md)
 
 ## Planned repository shape
 
-The implementation structure will be finalized through ADRs before it is created:
+The implementation structure follows accepted ADRs and will evolve as features are added:
 
 ```text
 ios/                 Native application and Apple-platform tests
@@ -73,9 +74,9 @@ docs/                Requirements, decisions, strategy, and evidence
 
 This is a learning-first project. Major decisions are discussed, compared, recorded, and validated before implementation. See [AGENTS.md](AGENTS.md) for the collaboration rules applied to future Codex tasks.
 
-## Next decision
+## Current implementation slice
 
-Choose the client architecture boundary for the first SwiftUI vertical slice. ADR-002's
-concurrency approach and ADR-012's iOS 17 deployment target are accepted. The database
-permits only one active hold per event-seat, so the tested race is between two hold
-requests; exactly one request creates the valid hold that may then be confirmed.
+The client architecture is set by ADR-013. Next: implement and validate the seat-snapshot
+loading flow against the existing backend API. The database permits only one active hold
+per event-seat, so the tested race is between two hold requests; exactly one request
+creates the valid hold that may then be confirmed.
