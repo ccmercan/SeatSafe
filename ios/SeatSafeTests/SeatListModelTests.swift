@@ -45,4 +45,35 @@ final class SeatListModelTests: XCTestCase {
 
         XCTAssertEqual(model.state, .failed)
     }
+
+    func testAvailableSeatCanBeSelectedAndDeselected() async {
+        let seat = makeSeat(id: "00000000-0000-4000-8000-000000000040", status: .available)
+        let model = SeatListModel(service: StubSeatService(result: .success([seat])))
+        await model.load(eventID: UUID())
+
+        model.toggleSelection(for: seat.id)
+        XCTAssertEqual(model.selectedSeat, seat)
+
+        model.toggleSelection(for: seat.id)
+        XCTAssertNil(model.selectedSeat)
+    }
+
+    func testUnavailableSeatCannotBeSelected() async {
+        let heldSeat = makeSeat(id: "00000000-0000-4000-8000-000000000041", status: .held)
+        let reservedSeat = makeSeat(id: "00000000-0000-4000-8000-000000000042", status: .reserved)
+        let model = SeatListModel(service: StubSeatService(result: .success([heldSeat, reservedSeat])))
+        await model.load(eventID: UUID())
+
+        model.toggleSelection(for: heldSeat.id)
+        model.toggleSelection(for: reservedSeat.id)
+
+        XCTAssertNil(model.selectedSeat)
+    }
+
+    private func makeSeat(id: String, status: EventSeat.Status) -> EventSeat {
+        EventSeat(
+            eventSeatID: UUID(uuidString: id)!,
+            section: "Main", row: "A", number: "1", priceCents: 2500, status: status
+        )
+    }
 }

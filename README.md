@@ -13,7 +13,8 @@ competing hold requests, same-key replay, different-key confirmation attempts, a
 transaction rollback after a real database constraint failure. The full backend suite
 passes with 41 tests. Phase 2 has started: ADR-002 accepts Swift structured concurrency,
 ADR-012 sets the iOS 17 deployment target, and ADR-013 selects lightweight SwiftUI feature
-models with injected async services. The first client slice is seat-snapshot loading.
+models with injected async services. The client can load the seat snapshot and locally
+select one available seat; creating a server hold is the next client behavior.
 
 ## Why this project exists
 
@@ -76,7 +77,8 @@ This is a learning-first project. Major decisions are discussed, compared, recor
 
 ## Current implementation slice
 
-The client architecture is set by ADR-013. Next: implement and validate the seat-snapshot
-loading flow against the existing backend API. The database permits only one active hold
-per event-seat, so the tested race is between two hold requests; exactly one request
-creates the valid hold that may then be confirmed.
+The client architecture is set by ADR-013. Seat loading and local selection are
+implemented. Before wiring the next action to `POST /v1/holds`, define how the client will
+recover when the server creates a hold but its response is lost. The database permits only
+one active hold per event-seat, so the tested race is between two hold requests; exactly
+one request creates the valid hold that may then be confirmed.

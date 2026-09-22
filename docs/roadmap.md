@@ -42,8 +42,9 @@ Exit condition: met. PostgreSQL concurrency tests demonstrate one valid hold win
 
 Status: in progress. ADR-002 selects Swift structured concurrency and main-actor feature
 state; ADR-012 sets the iOS deployment target to 17; ADR-013 selects lightweight SwiftUI
-feature models with injected async services. The first vertical slice is loading the
-existing seat-availability snapshot.
+feature models with injected async services. Seat-snapshot loading and local selection
+of one available seat are implemented and unit tested. The next client behavior is
+creating a server-side hold after resolving the ambiguous-response recovery policy.
 
 Scope:
 

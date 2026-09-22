@@ -1,15 +1,17 @@
 # Phase 2 evidence: seat-snapshot loading foundation
 
 - **Date:** 2026-09-22
-- **Scope:** first native client slice only; no seat selection or reservation writes yet.
+- **Scope:** native seat-list loading and local seat selection; no reservation writes yet.
 
 ## Implemented
 
 - Xcode project with iOS 17 deployment target and a shared `SeatSafe` scheme.
 - SwiftUI seat list with loading, empty, transport-error, and result states.
+- Local single-seat selection, visible selection summary, and non-selectable held/reserved
+  rows; the interface clearly says selection has not created a hold.
 - `@Observable @MainActor` model injected with an async `SeatService` protocol.
 - URLSession service decoding the existing backend snapshot endpoint and stable demo event.
-- XCTest source covering service result/error mapping and backend JSON decoding.
+- XCTest coverage for service result/error mapping, backend JSON decoding, and selection.
 - Local-network-only App Transport Security allowance for the local development API.
 
 ## Validation
@@ -19,7 +21,7 @@
 - An app build for the installed simulator SDK completed successfully before the plist
   was made explicit; the final `build-for-testing` also compiled the app with that plist.
 - `xcodebuild -project ios/SeatSafe.xcodeproj -scheme SeatSafe -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath /tmp/seatsafe-derived test`
-  passed: **3 tests, 0 failures** on the iOS 26.4 Simulator.
+  passed: **5 tests, 0 failures** on the iOS 26.4 Simulator.
 - The installed simulator runtime is iOS 26.4. iOS 17 runtime compatibility remains
   unverified locally, as recorded in ADR-012.
 
@@ -27,5 +29,6 @@
 
 - The event ID and loopback API address are demo configuration, not user-selectable event
   discovery or production environment configuration.
-- A broad retry/cancellation policy, caching, hold creation, and confirmation remain
-  future vertical slices; this screen only loads a read snapshot.
+- A retry/reconciliation policy for an ambiguous hold response, caching, hold creation,
+  and confirmation remain future vertical slices; the selected seat is still only local UI
+  state and the backend remains authoritative for availability.
