@@ -16,8 +16,10 @@ ADR-002 accepts Swift structured concurrency,
 ADR-012 sets the iOS 17 deployment target, and ADR-013 selects lightweight SwiftUI feature
 models with injected async services. The client can load the seat snapshot and locally
 select one available seat, create a server hold, and safely retry an uncertain hold request
-using the persisted seat/key pair described by ADR-015. Reservation confirmation is the
-next client behavior.
+using the persisted seat/key pair described by ADR-015. Reservation confirmation now
+continues that same flow: the client saves a confirmation key before calling the
+reservation endpoint and safely retries the same hold/key after an uncertain response,
+including after app-model recreation (ADR-016).
 
 ## Why this project exists
 
@@ -63,6 +65,7 @@ Discover event -> inspect event -> select seat -> hold seat
 - [ADR-013: Use lightweight SwiftUI feature models](docs/decisions/013-use-lightweight-swiftui-feature-models.md)
 - [ADR-014: Use database-backed idempotency for hold creation](docs/decisions/014-use-idempotency-for-hold-creation.md)
 - [ADR-015: Persist pending hold attempts locally](docs/decisions/015-persist-pending-hold-attempt-locally.md)
+- [ADR-016: Persist the hold and confirmation key locally](docs/decisions/016-persist-pending-confirmation-locally.md)
 
 ## Planned repository shape
 
@@ -83,7 +86,9 @@ This is a learning-first project. Major decisions are discussed, compared, recor
 ## Current implementation slice
 
 The client architecture is set by ADR-013. Seat loading, local selection, hold creation,
-and recovery using a persisted attempt key are implemented. The next client step is
-confirmation. The database permits only one active hold per event-seat, so the seat row
-lock remains necessary even with idempotency: different customers use different keys
-while competing for the same seat.
+reservation confirmation, and stable-key recovery for both writes are implemented. The
+remaining Phase 2 work is to validate the complete journey against the live local backend
+and improve automated coverage for cancellation/repeated actions and screen-level behavior.
+The database permits only one active hold per event-seat, so the seat row lock remains
+necessary even with idempotency: different customers use different keys while competing
+for the same seat.

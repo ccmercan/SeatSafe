@@ -46,7 +46,9 @@ feature models with injected async services. Seat-snapshot loading and local sel
 of one available seat are implemented and unit tested. ADR-014 defines database-backed
 retry behavior for creating a server-side hold; ADR-015 chooses UserDefaults to preserve
 the client attempt across flow exits and app restarts. Hold creation and ambiguous-result
-recovery are now implemented. The next client step is confirming a hold as a reservation.
+recovery are implemented. ADR-016 extends that durable retry behavior through reservation
+confirmation. The UI now confirms a successful hold as a reservation and safely retries an
+uncertain confirmation with its original hold ID and idempotency key.
 
 Scope:
 
@@ -65,7 +67,10 @@ Key decisions:
 - Structured task ownership and cancellation
 - Main-actor and shared-state isolation boundaries
 
-Exit condition: the critical flow works in the simulator, is covered below the UI layer, and remains correct when requests complete out of order, are cancelled, or are triggered repeatedly.
+Exit condition: the critical flow works end to end in the simulator, is covered below the
+UI layer, and remains correct when requests complete out of order, are cancelled, or are
+triggered repeatedly. The core hold-and-confirm behavior is implemented and unit tested;
+live-backend demonstration plus cancellation/repeated-action and screen-level checks remain.
 
 ## Phase 3: UI automation and testability
 

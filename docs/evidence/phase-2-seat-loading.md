@@ -1,8 +1,8 @@
-# Phase 2 evidence: seat-snapshot loading foundation
+# Phase 2 evidence: seat-to-reservation client flow
 
 - **Date:** 2026-09-22
-- **Scope:** native seat-list loading, local seat selection, and temporary hold creation;
-  reservation confirmation is not yet wired in the iOS client.
+- **Scope:** native seat-list loading, selection, hold creation, and reservation
+  confirmation with stable retry behavior.
 
 ## Implemented
 
@@ -23,6 +23,11 @@
   the original successful response, while a key reused for another seat is rejected.
   Database changes and concurrency/rollback test evidence are documented in
   [ADR-014](../decisions/014-use-idempotency-for-hold-creation.md).
+- Reservation confirmation sends the saved hold ID and `Idempotency-Key` to
+  `POST /v1/reservations`. UserDefaults keeps the hold and key through an uncertain result;
+  a recreated model can retry and get the original successful result. Definite expiration
+  clears the unusable flow. The accepted persistence choice is in
+  [ADR-016](../decisions/016-persist-pending-confirmation-locally.md).
 
 ## Validation
 
@@ -31,8 +36,11 @@
   passed: **48 tests, 0 failures**. `ruff check src tests` and
   `ruff format --check src tests` passed. PostgreSQL integration cases include same-key
   concurrency, key mismatch, and atomic rollback.
-- `xcodebuild -project ios/SeatSafe.xcodeproj -scheme SeatSafe -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath /tmp/seatsafe-derived test`
-  passed after this slice: **11 tests, 0 failures** on the iOS 26.4 Simulator.
+- `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project ios/SeatSafe.xcodeproj -scheme SeatSafe -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath /private/tmp/seatsafe-derived test`
+  passed after confirmation: **15 tests, 0 failures** on the iOS 26.4 Simulator. Tests cover
+  request shape, restored retry using the same hold/key, and clearing a definitely expired
+  confirmation. The backend was stopped, so an expected connection-refused message came
+  only from the app launch attempt; all tests use stubbed or mocked services.
 - `swift-format lint --strict ios/SeatSafe/SeatSafeApp.swift ios/SeatSafe/HoldCreation.swift ios/SeatSafeTests/SeatListModelTests.swift`
   passed using the repository's four-space `.swift-format` configuration.
 - The installed simulator runtime is iOS 26.4. iOS 17 runtime compatibility remains
@@ -42,7 +50,7 @@
 
 - The event ID and loopback API address are demo configuration, not user-selectable event
   discovery or production environment configuration.
-- iOS confirmation is not yet wired; after a successful hold, the app currently shows the
-  returned hold ID and expiry. The pending-attempt store is intentionally limited to one
-  attempt, matching the current single-seat demo flow. The backend remains authoritative
-  for availability.
+- The local flow store is intentionally limited to one in-progress attempt, matching the
+  current single-seat demo flow. The backend remains authoritative for availability.
+- Live interaction with the confirmation control still needs a manual run with the local
+  backend started; the current test suite validates it below the UI layer.

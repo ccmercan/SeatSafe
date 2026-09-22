@@ -18,6 +18,14 @@ private struct StubHoldService: HoldService {
     }
 }
 
+private struct StubReservationService: ReservationService {
+    let reservation: CreatedReservation
+
+    func confirm(holdID: UUID, idempotencyKey: String) async throws -> CreatedReservation {
+        reservation
+    }
+}
+
 private actor ScriptedHoldService: HoldService {
     enum Outcome: Sendable {
         case success(CreatedHold)
@@ -46,15 +54,45 @@ private actor ScriptedHoldService: HoldService {
     func recordedRequests() -> [PendingHoldAttempt] { requests }
 }
 
+private actor ScriptedReservationService: ReservationService {
+    enum Outcome: Sendable {
+        case success(CreatedReservation)
+        case expired
+        case transportFailure
+    }
+
+    private var outcomes: [Outcome]
+    private var requests: [(holdID: UUID, key: String)] = []
+
+    init(outcomes: [Outcome]) {
+        self.outcomes = outcomes
+    }
+
+    func confirm(holdID: UUID, idempotencyKey: String) async throws -> CreatedReservation {
+        requests.append((holdID, idempotencyKey))
+        switch outcomes.removeFirst() {
+        case .success(let reservation): return reservation
+        case .expired: throw ReservationServiceError.holdExpired
+        case .transportFailure: throw URLError(.timedOut)
+        }
+    }
+
+    func recordedRequests() -> [(holdID: UUID, key: String)] { requests }
+}
+
 private enum TestFailure: Error, Sendable { case expected }
 
 @MainActor
-private final class InMemoryPendingHoldAttemptStore: PendingHoldAttemptStore {
-    private(set) var attempt: PendingHoldAttempt?
+private final class InMemoryReservationFlowStore: ReservationFlowStore {
+    private(set) var flow: PersistedReservationFlow?
 
-    func load() -> PendingHoldAttempt? { attempt }
-    func save(_ attempt: PendingHoldAttempt) { self.attempt = attempt }
-    func clear() { attempt = nil }
+    init(flow: PersistedReservationFlow? = nil) {
+        self.flow = flow
+    }
+
+    func load() -> PersistedReservationFlow? { flow }
+    func save(_ flow: PersistedReservationFlow) { self.flow = flow }
+    func clear() { flow = nil }
 }
 
 private final class MockURLProtocolState: @unchecked Sendable {
@@ -145,7 +183,8 @@ final class SeatListModelTests: XCTestCase {
     func testLoadPublishesFailureInsteadOfLeakingTransportError() async {
         let model = SeatListModel(
             service: StubSeatService(result: .failure(.expected)),
-            holdService: makeHoldService()
+            holdService: makeHoldService(),
+            reservationService: makeReservationService()
         )
 
         await model.load(eventID: UUID())
@@ -184,12 +223,14 @@ final class SeatListModelTests: XCTestCase {
         let holdService = ScriptedHoldService(
             outcomes: [.transportFailure, .success(hold)]
         )
-        let attemptStore = InMemoryPendingHoldAttemptStore()
+        let attemptStore = InMemoryReservationFlowStore()
         let model = SeatListModel(
             service: StubSeatService(result: .success([seat, otherSeat])),
             holdService: holdService,
-            pendingAttemptStore: attemptStore,
-            idempotencyKeyFactory: { "stable-key" }
+            reservationService: makeReservationService(),
+            flowStore: attemptStore,
+            idempotencyKeyFactory: { "stable-key" },
+            confirmationKeyFactory: { "confirmation-key" }
         )
         await model.load(eventID: UUID())
         model.toggleSelection(for: seat.id)
@@ -199,7 +240,7 @@ final class SeatListModelTests: XCTestCase {
         XCTAssertEqual(model.holdState, .uncertain)
         XCTAssertEqual(
             attemptStore.load(),
-            PendingHoldAttempt(eventSeatID: seat.id, idempotencyKey: "stable-key")
+            .pendingHold(PendingHoldAttempt(eventSeatID: seat.id, idempotencyKey: "stable-key"))
         )
 
         await model.createHold()
@@ -209,7 +250,11 @@ final class SeatListModelTests: XCTestCase {
         XCTAssertEqual(requests[0], requests[1])
         XCTAssertEqual(requests[0].eventSeatID, seat.id)
         XCTAssertEqual(requests[0].idempotencyKey, "stable-key")
-        XCTAssertNil(attemptStore.load())
+        XCTAssertEqual(
+            attemptStore.load(),
+            .pendingConfirmation(
+                PendingReservationConfirmation(hold: hold, idempotencyKey: "confirmation-key")
+            ))
         XCTAssertEqual(model.holdState, .created(hold))
         model.toggleSelection(for: otherSeat.id)
         XCTAssertEqual(model.selectedSeat?.id, seat.id)
@@ -220,13 +265,15 @@ final class SeatListModelTests: XCTestCase {
         let seat = makeSeat(id: "00000000-0000-4000-8000-000000000040", status: .held)
         let hold = makeHold(for: seat.id)
         let holdService = ScriptedHoldService(outcomes: [.success(hold)])
-        let attemptStore = InMemoryPendingHoldAttemptStore()
+        let attemptStore = InMemoryReservationFlowStore()
         let attempt = PendingHoldAttempt(eventSeatID: seat.id, idempotencyKey: "restored-key")
-        attemptStore.save(attempt)
+        attemptStore.save(.pendingHold(attempt))
         let model = SeatListModel(
             service: StubSeatService(result: .success([seat])),
             holdService: holdService,
-            pendingAttemptStore: attemptStore
+            reservationService: makeReservationService(),
+            flowStore: attemptStore,
+            confirmationKeyFactory: { "confirmation-key" }
         )
 
         await model.load(eventID: UUID())
@@ -238,20 +285,26 @@ final class SeatListModelTests: XCTestCase {
         let requests = await holdService.recordedRequests()
         XCTAssertEqual(requests, [attempt])
         XCTAssertEqual(model.holdState, .created(hold))
-        XCTAssertNil(attemptStore.load())
+        XCTAssertEqual(
+            attemptStore.load(),
+            .pendingConfirmation(
+                PendingReservationConfirmation(hold: hold, idempotencyKey: "confirmation-key")
+            ))
     }
 
     func testDefinitiveUnavailableResponseClearsAttemptForANewTry() async {
         let seat = makeSeat(id: "00000000-0000-4000-8000-000000000040", status: .available)
         let hold = makeHold(for: seat.id)
         let holdService = ScriptedHoldService(outcomes: [.unavailable, .success(hold)])
-        let attemptStore = InMemoryPendingHoldAttemptStore()
+        let attemptStore = InMemoryReservationFlowStore()
         var keys = ["first-key", "new-key"].makeIterator()
         let model = SeatListModel(
             service: StubSeatService(result: .success([seat])),
             holdService: holdService,
-            pendingAttemptStore: attemptStore,
-            idempotencyKeyFactory: { keys.next()! }
+            reservationService: makeReservationService(),
+            flowStore: attemptStore,
+            idempotencyKeyFactory: { keys.next()! },
+            confirmationKeyFactory: { "confirmation-key" }
         )
         await model.load(eventID: UUID())
         model.toggleSelection(for: seat.id)
@@ -273,19 +326,34 @@ final class SeatListModelTests: XCTestCase {
     func testPendingAttemptPersistsAcrossUserDefaultsStoreInstances() throws {
         let suiteName = "SeatSafeTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        let firstStore = UserDefaultsPendingHoldAttemptStore(defaults: defaults)
+        let firstStore = UserDefaultsReservationFlowStore(defaults: defaults)
         let expected = PendingHoldAttempt(
             eventSeatID: UUID(uuidString: "00000000-0000-4000-8000-000000000040")!,
             idempotencyKey: "persisted-key"
         )
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        firstStore.save(expected)
+        firstStore.save(.pendingHold(expected))
 
-        let reopenedStore = UserDefaultsPendingHoldAttemptStore(defaults: defaults)
-        XCTAssertEqual(reopenedStore.load(), expected)
+        let reopenedStore = UserDefaultsReservationFlowStore(defaults: defaults)
+        XCTAssertEqual(reopenedStore.load(), .pendingHold(expected))
         reopenedStore.clear()
         XCTAssertNil(firstStore.load())
+    }
+
+    func testPendingConfirmationPersistsAcrossUserDefaultsStoreInstances() throws {
+        let suiteName = "SeatSafeTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let hold = makeHold(for: UUID(uuidString: "00000000-0000-4000-8000-000000000040")!)
+        let expected = PersistedReservationFlow.pendingConfirmation(
+            PendingReservationConfirmation(hold: hold, idempotencyKey: "durable-confirm-key")
+        )
+
+        UserDefaultsReservationFlowStore(defaults: defaults).save(expected)
+
+        let reopenedStore = UserDefaultsReservationFlowStore(defaults: defaults)
+        XCTAssertEqual(reopenedStore.load(), expected)
     }
 
     func testHTTPHoldServiceSendsExpectedMethodHeaderAndSeatBody() async throws {
@@ -339,14 +407,107 @@ final class SeatListModelTests: XCTestCase {
         }
     }
 
+    func testConfirmationRetryAfterModelRecreationKeepsTheSameHoldAndKey() async {
+        let seat = makeSeat(id: "00000000-0000-4000-8000-000000000040", status: .held)
+        let hold = makeHold(for: seat.id)
+        let pending = PendingReservationConfirmation(hold: hold, idempotencyKey: "confirm-key")
+        let store = InMemoryReservationFlowStore(flow: .pendingConfirmation(pending))
+        let reservation = makeReservation(for: hold)
+        let service = ScriptedReservationService(outcomes: [
+            .transportFailure, .success(reservation),
+        ])
+
+        let firstModel = SeatListModel(
+            service: StubSeatService(result: .success([seat])),
+            holdService: makeHoldService(),
+            reservationService: service,
+            flowStore: store
+        )
+        await firstModel.load(eventID: UUID())
+        await firstModel.confirmReservation()
+        XCTAssertEqual(firstModel.confirmationState, .uncertain)
+        XCTAssertEqual(store.load(), .pendingConfirmation(pending))
+
+        // Simulates the app model being recreated after it was closed or replaced.
+        let reopenedModel = SeatListModel(
+            service: StubSeatService(result: .success([seat])),
+            holdService: makeHoldService(),
+            reservationService: service,
+            flowStore: store
+        )
+        await reopenedModel.load(eventID: UUID())
+        await reopenedModel.confirmReservation()
+
+        let requests = await service.recordedRequests()
+        XCTAssertEqual(requests.map(\.holdID), [hold.id, hold.id])
+        XCTAssertEqual(requests.map(\.key), ["confirm-key", "confirm-key"])
+        XCTAssertEqual(reopenedModel.confirmationState, .confirmed(reservation))
+        XCTAssertNil(store.load())
+    }
+
+    func testExpiredConfirmationClearsThePendingFlow() async {
+        let seat = makeSeat(id: "00000000-0000-4000-8000-000000000040", status: .held)
+        let hold = makeHold(for: seat.id)
+        let store = InMemoryReservationFlowStore(
+            flow: .pendingConfirmation(
+                PendingReservationConfirmation(hold: hold, idempotencyKey: "confirm-key")
+            ))
+        let service = ScriptedReservationService(outcomes: [.expired])
+        let model = SeatListModel(
+            service: StubSeatService(result: .success([seat])),
+            holdService: makeHoldService(),
+            reservationService: service,
+            flowStore: store
+        )
+
+        await model.load(eventID: UUID())
+        await model.confirmReservation()
+
+        XCTAssertEqual(model.confirmationState, .expired)
+        XCTAssertNil(store.load())
+        XCTAssertFalse(model.canConfirmReservation)
+    }
+
+    func testHTTPReservationServiceSendsExpectedRequestContract() async throws {
+        let hold = makeHold(for: UUID(uuidString: "00000000-0000-4000-8000-000000000040")!)
+        let reservation = makeReservation(for: hold)
+        HoldMockURLProtocol.state.configure(
+            statusCode: 201,
+            body: try JSONEncoder().encode(reservation)
+        )
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [HoldMockURLProtocol.self]
+        let service = HTTPReservationService(
+            baseURL: URL(string: "https://seatsafe.test")!,
+            session: URLSession(configuration: configuration)
+        )
+
+        let result = try await service.confirm(holdID: hold.id, idempotencyKey: "confirm-key")
+
+        let request = try XCTUnwrap(HoldMockURLProtocol.state.request())
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.path, "/v1/reservations")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Idempotency-Key"), "confirm-key")
+        let body: Data
+        if let requestBody = request.httpBody {
+            body = requestBody
+        } else {
+            body = try readBody(from: XCTUnwrap(request.httpBodyStream))
+        }
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
+        XCTAssertEqual(json["hold_id"], hold.id.uuidString.lowercased())
+        XCTAssertEqual(result, reservation)
+    }
+
     private func makeModel(
         seats: [EventSeat],
-        store: InMemoryPendingHoldAttemptStore = InMemoryPendingHoldAttemptStore()
+        store: InMemoryReservationFlowStore = InMemoryReservationFlowStore()
     ) -> SeatListModel {
         SeatListModel(
             service: StubSeatService(result: .success(seats)),
             holdService: makeHoldService(),
-            pendingAttemptStore: store
+            reservationService: makeReservationService(),
+            flowStore: store
         )
     }
 
@@ -370,12 +531,33 @@ final class SeatListModelTests: XCTestCase {
             hold: makeHold(for: UUID(uuidString: "00000000-0000-4000-8000-000000000040")!))
     }
 
+    private func makeReservationService() -> StubReservationService {
+        StubReservationService(
+            reservation: CreatedReservation(
+                id: UUID(uuidString: "00000000-0000-4000-8000-000000000060")!,
+                holdID: UUID(uuidString: "00000000-0000-4000-8000-000000000050")!,
+                eventSeatID: UUID(uuidString: "00000000-0000-4000-8000-000000000040")!,
+                status: "confirmed",
+                confirmedAt: "2026-09-22T12:01:00Z"
+            ))
+    }
+
     private func makeHold(for eventSeatID: UUID) -> CreatedHold {
         CreatedHold(
             id: UUID(uuidString: "00000000-0000-4000-8000-000000000050")!,
             eventSeatID: eventSeatID,
             status: "active",
             expiresAt: "2026-09-22T12:05:00Z"
+        )
+    }
+
+    private func makeReservation(for hold: CreatedHold) -> CreatedReservation {
+        CreatedReservation(
+            id: UUID(uuidString: "00000000-0000-4000-8000-000000000060")!,
+            holdID: hold.id,
+            eventSeatID: hold.eventSeatID,
+            status: "confirmed",
+            confirmedAt: "2026-09-22T12:01:00Z"
         )
     }
 

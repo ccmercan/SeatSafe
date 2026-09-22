@@ -101,10 +101,13 @@ lock keyed by the request identity) serializes first use of the same key; the ev
 row lock separately serializes different customers competing for one seat. Both the new
 hold and its replay response are committed in one database transaction.
 
-The iOS app persists its pending seat ID and request key in UserDefaults before sending
-the write. If the network fails or the local task is cancelled, the app cannot assume the
-server stopped; it keeps those values and retries the same logical request. This local
-recovery boundary is recorded in [ADR-015](decisions/015-persist-pending-hold-attempt-locally.md).
+The iOS app persists its pending seat ID and hold key before creating a hold. Once the
+hold succeeds, it atomically replaces that record with the hold response and a stable
+confirmation key before the user confirms. If the network fails or the local task is
+cancelled, the app cannot assume the server stopped; it keeps the same values and retries
+the same logical request, even after its model is recreated. This recovery is recorded in
+[ADR-015](decisions/015-persist-pending-hold-attempt-locally.md) and
+[ADR-016](decisions/016-persist-pending-confirmation-locally.md).
 
 Remaining evidence to add:
 

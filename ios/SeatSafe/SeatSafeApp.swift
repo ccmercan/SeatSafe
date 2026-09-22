@@ -81,35 +81,65 @@ final class SeatListModel {
         case failed(statusCode: Int)
     }
 
+    enum ConfirmationState: Equatable {
+        case idle
+        case confirming
+        case uncertain
+        case confirmed(CreatedReservation)
+        case expired
+        case unavailable
+        case keyRejected
+        case failed(statusCode: Int)
+    }
+
     private(set) var state: State = .idle
     private(set) var selectedSeatID: UUID?
     private(set) var holdState: HoldState
+    private(set) var confirmationState: ConfirmationState
     private let service: any SeatService
     private let holdService: any HoldService
-    private let pendingAttemptStore: any PendingHoldAttemptStore
+    private let reservationService: any ReservationService
+    private let flowStore: any ReservationFlowStore
     private let idempotencyKeyFactory: () -> String
-    private(set) var pendingAttempt: PendingHoldAttempt?
+    private let confirmationKeyFactory: () -> String
+    private(set) var persistedFlow: PersistedReservationFlow?
     private var currentEventID: UUID?
 
     init(
         service: any SeatService,
         holdService: any HoldService,
-        pendingAttemptStore: any PendingHoldAttemptStore = UserDefaultsPendingHoldAttemptStore(),
-        idempotencyKeyFactory: @escaping () -> String = { UUID().uuidString.lowercased() }
+        reservationService: any ReservationService,
+        flowStore: any ReservationFlowStore = UserDefaultsReservationFlowStore(),
+        idempotencyKeyFactory: @escaping () -> String = { UUID().uuidString.lowercased() },
+        confirmationKeyFactory: @escaping () -> String = { UUID().uuidString.lowercased() }
     ) {
         self.service = service
         self.holdService = holdService
-        self.pendingAttemptStore = pendingAttemptStore
+        self.reservationService = reservationService
+        self.flowStore = flowStore
         self.idempotencyKeyFactory = idempotencyKeyFactory
-        let restoredAttempt = pendingAttemptStore.load()
-        pendingAttempt = restoredAttempt
-        selectedSeatID = restoredAttempt?.eventSeatID
-        holdState = restoredAttempt == nil ? .idle : .uncertain
+        self.confirmationKeyFactory = confirmationKeyFactory
+        let restoredFlow = flowStore.load()
+        persistedFlow = restoredFlow
+        switch restoredFlow {
+        case .pendingHold(let attempt):
+            selectedSeatID = attempt.eventSeatID
+            holdState = .uncertain
+            confirmationState = .idle
+        case .pendingConfirmation(let pending):
+            selectedSeatID = pending.hold.eventSeatID
+            holdState = .created(pending.hold)
+            confirmationState = .uncertain
+        case nil:
+            selectedSeatID = nil
+            holdState = .idle
+            confirmationState = .idle
+        }
     }
 
     func load(eventID: UUID) async {
         currentEventID = eventID
-        selectedSeatID = pendingAttempt?.eventSeatID
+        selectedSeatID = flowSeatID
         state = .loading
         do {
             state = .loaded(try await service.seats(for: eventID))
@@ -130,6 +160,29 @@ final class SeatListModel {
         return false
     }
 
+    var pendingAttempt: PendingHoldAttempt? {
+        guard case .pendingHold(let attempt) = persistedFlow else { return nil }
+        return attempt
+    }
+
+    var pendingConfirmation: PendingReservationConfirmation? {
+        guard case .pendingConfirmation(let pending) = persistedFlow else { return nil }
+        return pending
+    }
+
+    private var flowSeatID: UUID? {
+        if let pendingAttempt { return pendingAttempt.eventSeatID }
+        return pendingConfirmation?.hold.eventSeatID
+    }
+
+    var canConfirmReservation: Bool {
+        guard pendingConfirmation != nil, confirmationState != .confirming else { return false }
+        if case .keyRejected = confirmationState { return false }
+        if case .confirmed = confirmationState { return false }
+        if confirmationState == .expired || confirmationState == .unavailable { return false }
+        return true
+    }
+
     var canCreateHold: Bool {
         guard let selectedSeat, holdState != .creating, !hasCreatedHold else { return false }
         if case .keyRejected = holdState { return false }
@@ -139,7 +192,7 @@ final class SeatListModel {
 
     func toggleSelection(for seatID: UUID) {
         // Keep an unknown attempt stable and keep a successful hold for the next flow step.
-        guard pendingAttempt == nil, !hasCreatedHold else { return }
+        guard persistedFlow == nil, !hasCreatedHold else { return }
         guard case .loaded(let seats) = state,
             let seat = seats.first(where: { $0.id == seatID }),
             seat.status == .available
@@ -149,6 +202,7 @@ final class SeatListModel {
 
         selectedSeatID = selectedSeatID == seatID ? nil : seatID
         holdState = .idle
+        confirmationState = .idle
     }
 
     func createHold() async {
@@ -162,8 +216,9 @@ final class SeatListModel {
             )
         if pendingAttempt == nil {
             // Persist before sending: the request might succeed even if its reply is lost.
-            pendingAttemptStore.save(attempt)
-            pendingAttempt = attempt
+            let flow = PersistedReservationFlow.pendingHold(attempt)
+            flowStore.save(flow)
+            persistedFlow = flow
         }
 
         holdState = .creating
@@ -172,17 +227,24 @@ final class SeatListModel {
                 for: attempt.eventSeatID,
                 idempotencyKey: attempt.idempotencyKey
             )
-            pendingAttemptStore.clear()
-            pendingAttempt = nil
+            // Replace the hold attempt with its next-step data in one local write.
+            let pending = PendingReservationConfirmation(
+                hold: hold,
+                idempotencyKey: confirmationKeyFactory()
+            )
+            let flow = PersistedReservationFlow.pendingConfirmation(pending)
+            flowStore.save(flow)
+            persistedFlow = flow
             holdState = .created(hold)
+            confirmationState = .idle
         } catch is CancellationError {
             // Cancelling a local Swift task does not prove the server stopped processing.
             holdState = .uncertain
         } catch let error as HoldServiceError {
             switch error {
             case .seatUnavailable:
-                pendingAttemptStore.clear()
-                pendingAttempt = nil
+                flowStore.clear()
+                persistedFlow = nil
                 holdState = .unavailable
                 // Refresh the snapshot so the stale seat does not still look available.
                 if let currentEventID,
@@ -203,12 +265,65 @@ final class SeatListModel {
             holdState = .uncertain
         }
     }
+
+    func confirmReservation() async {
+        guard let pendingConfirmation, canConfirmReservation else { return }
+        confirmationState = .confirming
+        do {
+            let reservation = try await reservationService.confirm(
+                holdID: pendingConfirmation.hold.id,
+                idempotencyKey: pendingConfirmation.idempotencyKey
+            )
+            flowStore.clear()
+            persistedFlow = nil
+            holdState = .idle
+            confirmationState = .confirmed(reservation)
+            await refreshSeats()
+        } catch is CancellationError {
+            // Local task cancellation cannot roll back an already accepted confirmation.
+            confirmationState = .uncertain
+        } catch let error as ReservationServiceError {
+            switch error {
+            case .holdExpired:
+                await clearUnusableConfirmation(state: .expired)
+            case .seatUnavailable:
+                await clearUnusableConfirmation(state: .unavailable)
+            case .idempotencyKeyReused:
+                confirmationState = .keyRejected
+            case .rejected(let statusCode):
+                // Keep the key because a server error may follow a committed reservation.
+                confirmationState = .failed(statusCode: statusCode)
+            case .invalidResponse:
+                confirmationState = .uncertain
+            }
+        } catch {
+            confirmationState = .uncertain
+        }
+    }
+
+    private func clearUnusableConfirmation(state: ConfirmationState) async {
+        flowStore.clear()
+        persistedFlow = nil
+        holdState = .unavailable
+        confirmationState = state
+        await refreshSeats()
+    }
+
+    private func refreshSeats() async {
+        guard let currentEventID,
+            let refreshedSeats = try? await service.seats(for: currentEventID)
+        else { return }
+        state = .loaded(refreshedSeats)
+    }
 }
 
 struct SeatListView: View {
     @State private var model = SeatListModel(
         service: HTTPSeatService(baseURL: URL(string: "http://127.0.0.1:8000")!),
-        holdService: HTTPHoldService(baseURL: URL(string: "http://127.0.0.1:8000")!)
+        holdService: HTTPHoldService(baseURL: URL(string: "http://127.0.0.1:8000")!),
+        reservationService: HTTPReservationService(
+            baseURL: URL(string: "http://127.0.0.1:8000")!
+        )
     )
 
     var body: some View {
@@ -270,6 +385,7 @@ struct SeatListView: View {
                                 Text("Selected: \(selectedSeat.displayName)")
                                     .font(.headline)
                                 holdStatus(for: model.holdState)
+                                confirmationStatus(for: model.confirmationState)
                                 if model.canCreateHold {
                                     Button(model.pendingAttempt == nil ? "Hold seat" : "Retry hold")
                                     {
@@ -278,6 +394,14 @@ struct SeatListView: View {
                                     .buttonStyle(.borderedProminent)
                                     .disabled(model.holdState == .creating)
                                     .accessibilityIdentifier("seat-selection.hold")
+                                }
+                                if model.canConfirmReservation {
+                                    Button(confirmationButtonTitle) {
+                                        Task { await model.confirmReservation() }
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(model.confirmationState == .confirming)
+                                    .accessibilityIdentifier("reservation.confirm")
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -317,7 +441,7 @@ struct SeatListView: View {
                 .foregroundStyle(.green)
                 .accessibilityIdentifier("seat-selection.created")
         case .unavailable:
-            Text("This seat is no longer available. Choose another available seat.")
+            Text("This hold is no longer active. Select an available seat to start over.")
                 .font(.footnote)
                 .foregroundStyle(.orange)
         case .keyRejected:
@@ -329,6 +453,59 @@ struct SeatListView: View {
         case .failed(let statusCode):
             Text(
                 "The server returned HTTP \(statusCode). You can retry safely with the saved request key."
+            )
+            .font(.footnote)
+            .foregroundStyle(.orange)
+        }
+    }
+
+    private var confirmationButtonTitle: String {
+        switch model.confirmationState {
+        case .uncertain, .failed:
+            return "Retry confirmation"
+        default:
+            return "Confirm reservation"
+        }
+    }
+
+    @ViewBuilder
+    private func confirmationStatus(for state: SeatListModel.ConfirmationState) -> some View {
+        switch state {
+        case .idle:
+            if model.hasCreatedHold {
+                Text("Confirm the temporary hold to create your reservation.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        case .confirming:
+            ProgressView("Confirming your reservation…")
+        case .uncertain:
+            Text("We couldn’t confirm the result. Retry will reuse the same hold and request key.")
+                .font(.footnote)
+                .foregroundStyle(.orange)
+                .accessibilityIdentifier("reservation.confirmation-uncertain")
+        case .confirmed(let reservation):
+            Text("Reservation confirmed. ID: \(reservation.id.uuidString)")
+                .font(.footnote)
+                .foregroundStyle(.green)
+                .accessibilityIdentifier("reservation.confirmed")
+        case .expired:
+            Text("The hold expired before confirmation. Select an available seat to try again.")
+                .font(.footnote)
+                .foregroundStyle(.orange)
+        case .unavailable:
+            Text("This hold can no longer be confirmed. Choose an available seat to start again.")
+                .font(.footnote)
+                .foregroundStyle(.orange)
+        case .keyRejected:
+            Text(
+                "The saved confirmation key conflicts with another request; it is preserved for safety."
+            )
+            .font(.footnote)
+            .foregroundStyle(.red)
+        case .failed(let statusCode):
+            Text(
+                "The server returned HTTP \(statusCode). You can safely retry the saved confirmation."
             )
             .font(.footnote)
             .foregroundStyle(.orange)
