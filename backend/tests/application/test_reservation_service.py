@@ -59,22 +59,23 @@ class FakeReservationRepository:
                 NOW + timedelta(minutes=5),
             ),
         }
-        self.records: dict[tuple[UUID, str], FakeIdempotencyRecord] = {}
-        self.locked_keys: list[tuple[UUID, str]] = []
+        self.records: dict[tuple[UUID, str, str], FakeIdempotencyRecord] = {}
+        self.locked_keys: list[tuple[UUID, str, str]] = []
         self.locked_seats: list[UUID] = []
         self.active_reservation = False
         self.reservations: list[Reservation] = []
 
-    async def lock_idempotency_key(self, *, owner_id: UUID, key: str) -> None:
-        self.locked_keys.append((owner_id, key))
+    async def lock_key(self, *, owner_id: UUID, operation: str, key: str) -> None:
+        self.locked_keys.append((owner_id, operation, key))
 
-    async def get_idempotency_record(
+    async def get_record(
         self,
         *,
         owner_id: UUID,
+        operation: str,
         key: str,
     ) -> FakeIdempotencyRecord | None:
-        return self.records.get((owner_id, key))
+        return self.records.get((owner_id, operation, key))
 
     async def get_hold(self, hold_id: UUID) -> FakeHold | None:
         return self.holds.get(hold_id)
@@ -95,18 +96,22 @@ class FakeReservationRepository:
     async def flush(self) -> None:
         return None
 
-    async def add_idempotency_record(
+    async def add_record(
         self,
         *,
         id: UUID,
         owner_id: UUID,
+        operation: str,
         key: str,
         request_fingerprint: str,
-        reservation_id: UUID,
+        hold_id: UUID | None,
+        reservation_id: UUID | None,
         completed_at: datetime,
         response_body: str,
     ) -> None:
-        self.records[(owner_id, key)] = FakeIdempotencyRecord(
+        assert hold_id is None
+        assert reservation_id is not None
+        self.records[(owner_id, operation, key)] = FakeIdempotencyRecord(
             request_fingerprint=request_fingerprint,
             response_status=201,
             response_body=response_body,
@@ -116,6 +121,7 @@ class FakeReservationRepository:
 class FakeReservationUnitOfWork:
     def __init__(self, repository: FakeReservationRepository) -> None:
         self.reservations = repository
+        self.idempotency = repository
         self.commits = 0
 
     async def __aenter__(self) -> "FakeReservationUnitOfWork":
@@ -156,7 +162,10 @@ async def test_confirm_creates_reservation_and_same_key_replays_original_respons
     assert len(repository.reservations) == 1
     assert repository.holds[HOLD_ID].status == "confirmed"
     assert unit_of_work.commits == 1
-    assert repository.locked_keys == [(OWNER_ID, "key-1"), (OWNER_ID, "key-1")]
+    assert repository.locked_keys == [
+        (OWNER_ID, "confirm_reservation", "key-1"),
+        (OWNER_ID, "confirm_reservation", "key-1"),
+    ]
 
 
 @pytest.mark.asyncio

@@ -67,31 +67,68 @@ class SqlAlchemyHoldRepository:
             )
         )
 
+    async def flush(self) -> None:
+        await self._session.flush()
 
-class SqlAlchemyReservationRepository:
+
+class SqlAlchemyIdempotencyRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def lock_idempotency_key(self, *, owner_id: UUID, key: str) -> None:
-        # A transaction-scoped advisory lock also coordinates keys that have no row yet.
-        lock_key = f"{owner_id}:confirm_reservation:{key}"
+    async def lock_key(self, *, owner_id: UUID, operation: str, key: str) -> None:
+        # The advisory lock coordinates concurrent first uses before an idempotency row exists.
+        lock_key = f"{owner_id}:{operation}:{key}"
         await self._session.execute(
             text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
             {"lock_key": lock_key},
         )
 
-    async def get_idempotency_record(
+    async def get_record(
         self,
         *,
         owner_id: UUID,
+        operation: str,
         key: str,
     ) -> IdempotencyRecord | None:
         statement = select(IdempotencyRecord).where(
             IdempotencyRecord.owner_id == owner_id,
-            IdempotencyRecord.operation == "confirm_reservation",
+            IdempotencyRecord.operation == operation,
             IdempotencyRecord.idempotency_key == key,
         )
         return await self._session.scalar(statement)
+
+    async def add_record(
+        self,
+        *,
+        id: UUID,
+        owner_id: UUID,
+        operation: str,
+        key: str,
+        request_fingerprint: str,
+        hold_id: UUID | None,
+        reservation_id: UUID | None,
+        completed_at: datetime,
+        response_body: str,
+    ) -> None:
+        self._session.add(
+            IdempotencyRecord(
+                id=id,
+                owner_id=owner_id,
+                operation=operation,
+                idempotency_key=key,
+                request_fingerprint=request_fingerprint,
+                response_status=201,
+                hold_id=hold_id,
+                reservation_id=reservation_id,
+                completed_at=completed_at,
+                response_body=response_body,
+            )
+        )
+
+
+class SqlAlchemyReservationRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
 
     async def get_hold(self, hold_id: UUID) -> SeatHold | None:
         statement = (
@@ -147,43 +184,20 @@ class SqlAlchemyReservationRepository:
     async def flush(self) -> None:
         await self._session.flush()
 
-    async def add_idempotency_record(
-        self,
-        *,
-        id: UUID,
-        owner_id: UUID,
-        key: str,
-        request_fingerprint: str,
-        reservation_id: UUID,
-        completed_at: datetime,
-        response_body: str,
-    ) -> None:
-        self._session.add(
-            IdempotencyRecord(
-                id=id,
-                owner_id=owner_id,
-                operation="confirm_reservation",
-                idempotency_key=key,
-                request_fingerprint=request_fingerprint,
-                response_status=201,
-                reservation_id=reservation_id,
-                completed_at=completed_at,
-                response_body=response_body,
-            )
-        )
-
 
 class SqlAlchemyHoldUnitOfWork:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
         self._session: AsyncSession | None = None
         self.holds: SqlAlchemyHoldRepository
+        self.idempotency: SqlAlchemyIdempotencyRepository
         self.reservations: SqlAlchemyReservationRepository
 
     async def __aenter__(self) -> "SqlAlchemyHoldUnitOfWork":
         self._session = self._session_factory()
         await self._session.begin()
         self.holds = SqlAlchemyHoldRepository(self._session)
+        self.idempotency = SqlAlchemyIdempotencyRepository(self._session)
         self.reservations = SqlAlchemyReservationRepository(self._session)
         return self
 

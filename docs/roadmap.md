@@ -19,7 +19,7 @@ Exit condition: the owner reviews the documents and accepts or revises ADR-001.
 
 ## Phase 1: Reservation-core vertical slice
 
-Status: complete. The backend foundation, disposable PostgreSQL environment, initial schema migration, hold creation, deterministic demo seeding, seat-retrieval snapshot, and reservation confirmation with database-backed idempotency are implemented. PostgreSQL integration tests prove that two hold requests competing for one event-seat produce one valid hold, same-key retries replay one result, different-key confirmations cannot confirm one hold twice, and a forced database constraint failure rolls back the entire confirmation transaction. The backend suite passes with 41 tests.
+Status: complete. The backend foundation, disposable PostgreSQL environment, schema migrations, hold creation, deterministic demo seeding, seat-retrieval snapshot, and reservation confirmation with database-backed idempotency are implemented. ADR-014 extends idempotency to hold creation. PostgreSQL integration tests prove that competing requests produce one hold, same-key hold retries replay one result, a key reused for another seat is rejected, and database failures roll back the hold and replay record together. Confirmation retry and rollback behavior is also covered.
 
 Scope:
 
@@ -36,15 +36,16 @@ Key decisions:
 - Database schema and concurrency-control strategy
 - Test database lifecycle
 
-Exit condition: met. PostgreSQL concurrency tests demonstrate one valid hold winner for competing callers; confirmation tests demonstrate one reservation and safe retries; a forced database constraint failure demonstrates that the hold transition, reservation, and idempotency record commit or roll back together.
+Exit condition: met. PostgreSQL concurrency tests demonstrate one valid hold winner for competing callers; confirmation and hold tests demonstrate safe retries; forced database constraint failures demonstrate each operation's state change and idempotency record commit or roll back together.
 
 ## Phase 2: Native iOS vertical slice
 
 Status: in progress. ADR-002 selects Swift structured concurrency and main-actor feature
 state; ADR-012 sets the iOS deployment target to 17; ADR-013 selects lightweight SwiftUI
 feature models with injected async services. Seat-snapshot loading and local selection
-of one available seat are implemented and unit tested. The next client behavior is
-creating a server-side hold after resolving the ambiguous-response recovery policy.
+of one available seat are implemented and unit tested. ADR-014 has defined backend retry
+behavior for creating a server-side hold. Before wiring that action, choose how the iOS
+client will retain the pending attempt key and seat when the flow is interrupted.
 
 Scope:
 

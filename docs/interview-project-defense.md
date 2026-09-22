@@ -89,11 +89,17 @@ Evidence to add:
 
 ### How does confirmation remain safe when a request is retried?
 
-Status: ADR-007 accepted; the HTTP header contract, confirmation service, PostgreSQL retry/concurrency evidence, and forced database-constraint rollback test are implemented (41 backend tests passed on 2026-09-22).
+Status: ADR-007 and ADR-014 accepted; hold and confirmation HTTP header contracts, PostgreSQL retry/concurrency evidence, and forced database-constraint rollback tests are implemented (48 backend tests passed on 2026-09-22).
 
 Draft answer:
 
 > The client supplies one stable idempotency key for a logical confirmation attempt. PostgreSQL stores that key with a fingerprint of the request and the logical result. A retry with the same key and input receives the original reservation result, while reuse with different input is rejected. This is separate from the active-reservation constraint: idempotency gives one request a stable answer, while the seat constraint protects against competing requests that use different keys.
+
+For hold creation, the same idea applies: a retry with the same owner, operation, key,
+and seat returns the original hold response. An advisory lock (a PostgreSQL transaction
+lock keyed by the request identity) serializes first use of the same key; the event-seat
+row lock separately serializes different customers competing for one seat. Both the new
+hold and its replay response are committed in one database transaction.
 
 Remaining evidence to add:
 

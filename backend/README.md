@@ -72,7 +72,9 @@ Disabling automatic discovery prevents unrelated globally installed pytest plugi
 
 ## Create a hold
 
-`POST /v1/holds` accepts an event-seat identifier:
+`POST /v1/holds` accepts an event-seat identifier and a client-generated
+`Idempotency-Key` header (1–255 characters). Keep the same key for retries of the same
+seat-hold attempt; use a new key for a new attempt.
 
 ```json
 {
@@ -80,7 +82,21 @@ Disabling automatic discovery prevents unrelated globally installed pytest plugi
 }
 ```
 
+Example request:
+
+```bash
+curl --request POST http://127.0.0.1:8000/v1/holds \
+  --header 'Content-Type: application/json' \
+  --header 'Idempotency-Key: demo-hold-attempt-001' \
+  --data '{"event_seat_id":"00000000-0000-4000-8000-000000000040"}'
+```
+
 A successful request returns `201 Created` with the hold ID, active status, and expiration time. Missing seats return `resource_not_found`; seats with active holds or reservations return `seat_unavailable` using the Problem Details contract.
+Repeating the same key and seat returns the original successful response, including its
+original expiry time. Reusing that key for a different seat returns
+`409 idempotency_key_reused`; unsuccessful requests do not reserve the key. See
+[ADR-014](../docs/decisions/014-use-idempotency-for-hold-creation.md) for the decision
+and concurrency/transaction details.
 
 After applying the migration, replace the disposable database contents with the stable
 manual-demo scenario:

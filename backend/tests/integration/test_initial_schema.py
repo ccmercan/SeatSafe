@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
@@ -19,12 +20,20 @@ from seatsafe.db.demo_seed import (
     DEMO_USER_ID,
     seed_demo_database,
 )
-from seatsafe.db.holds import SqlAlchemyHoldUnitOfWork, SqlAlchemyReservationRepository
+from seatsafe.db.holds import (
+    SqlAlchemyHoldUnitOfWork,
+    SqlAlchemyIdempotencyRepository,
+)
 from seatsafe.db.models import IdempotencyRecord
 from seatsafe.db.safety import require_test_database
 from seatsafe.db.seats import SqlAlchemySeatQueryRepository
 from seatsafe.db.session import create_database_engine, create_session_factory
-from seatsafe.domain.holds import HoldNotActive, SeatHold, SeatUnavailable
+from seatsafe.domain.holds import (
+    HoldCreationResult,
+    HoldNotActive,
+    IdempotencyKeyReused,
+    SeatUnavailable,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -157,10 +166,19 @@ async def test_hold_service_creates_one_hold_and_rejects_the_next(
             )
             await _seed_event_seat(connection, ids, now)
 
-        hold = await service.create_hold(event_seat_id=ids.event_seat, owner_id=ids.user)
+        hold = await service.create_hold(
+            event_seat_id=ids.event_seat, owner_id=ids.user, idempotency_key="initial-hold"
+        )
+        replay = await service.create_hold(
+            event_seat_id=ids.event_seat, owner_id=ids.user, idempotency_key="initial-hold"
+        )
 
         with pytest.raises(SeatUnavailable):
-            await service.create_hold(event_seat_id=ids.event_seat, owner_id=ids.user)
+            await service.create_hold(
+                event_seat_id=ids.event_seat,
+                owner_id=ids.user,
+                idempotency_key="different-attempt",
+            )
 
         async with engine.connect() as connection:
             active_count = await connection.scalar(
@@ -169,9 +187,148 @@ async def test_hold_service_creates_one_hold_and_rejects_the_next(
     finally:
         await engine.dispose()
 
-    assert hold.id == ids.first_hold
-    assert hold.expires_at == now + timedelta(minutes=5)
+    assert hold.status_code == 201
+    assert replay.status_code == hold.status_code
+    assert replay.response_body == hold.response_body
+    assert replay.replayed
+    assert not hold.replayed
+    assert str(ids.first_hold) in hold.response_body
     assert active_count == 1
+
+
+@pytest.mark.asyncio
+async def test_same_key_for_a_different_seat_is_rejected_without_creating_second_hold(
+    migrated_database: None,
+) -> None:
+    settings = Settings(environment="test")
+    await seed_demo_database(settings)
+    engine = create_database_engine(settings)
+    session_factory = create_session_factory(engine)
+    now = datetime(2026, 9, 11, 12, 0, tzinfo=UTC)
+    service = _hold_service(
+        session_factory,
+        now,
+        UUID("00000000-0000-4000-8000-000000000091"),
+        UUID("00000000-0000-4000-8000-000000000092"),
+    )
+
+    try:
+        await service.create_hold(
+            event_seat_id=DEMO_EVENT_SEAT_IDS[0],
+            owner_id=DEMO_USER_ID,
+            idempotency_key="same-key-different-seat",
+        )
+        with pytest.raises(IdempotencyKeyReused):
+            await service.create_hold(
+                event_seat_id=DEMO_EVENT_SEAT_IDS[1],
+                owner_id=DEMO_USER_ID,
+                idempotency_key="same-key-different-seat",
+            )
+        async with engine.connect() as connection:
+            hold_count = await connection.scalar(text("SELECT count(*) FROM seat_holds"))
+    finally:
+        await engine.dispose()
+
+    assert hold_count == 1
+
+
+@pytest.mark.asyncio
+async def test_simultaneous_same_key_hold_requests_replay_one_result(
+    migrated_database: None,
+) -> None:
+    settings = Settings(environment="test")
+    await seed_demo_database(settings)
+    engine = create_database_engine(settings)
+    session_factory = create_session_factory(engine)
+    now = datetime(2026, 9, 11, 12, 0, tzinfo=UTC)
+    first_service = _hold_service(
+        session_factory,
+        now,
+        UUID("00000000-0000-4000-8000-000000000093"),
+        UUID("00000000-0000-4000-8000-000000000094"),
+    )
+    second_service = _hold_service(
+        session_factory,
+        now,
+        UUID("00000000-0000-4000-8000-000000000095"),
+        UUID("00000000-0000-4000-8000-000000000096"),
+    )
+
+    try:
+        first, second = await asyncio.gather(
+            first_service.create_hold(
+                event_seat_id=DEMO_EVENT_SEAT_IDS[0],
+                owner_id=DEMO_USER_ID,
+                idempotency_key="simultaneous-hold-key",
+            ),
+            second_service.create_hold(
+                event_seat_id=DEMO_EVENT_SEAT_IDS[0],
+                owner_id=DEMO_USER_ID,
+                idempotency_key="simultaneous-hold-key",
+            ),
+        )
+        async with engine.connect() as connection:
+            hold_count = await connection.scalar(text("SELECT count(*) FROM seat_holds"))
+            key_count = await connection.scalar(
+                text("SELECT count(*) FROM idempotency_records WHERE operation = 'create_hold'")
+            )
+    finally:
+        await engine.dispose()
+
+    assert first.response_body == second.response_body
+    assert first.replayed != second.replayed
+    assert hold_count == 1
+    assert key_count == 1
+
+
+@pytest.mark.asyncio
+async def test_hold_and_replay_record_roll_back_together_on_database_error(
+    migrated_database: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(environment="test")
+    await seed_demo_database(settings)
+    engine = create_database_engine(settings)
+    session_factory = create_session_factory(engine)
+    now = datetime(2026, 9, 11, 12, 0, tzinfo=UTC)
+    service = _hold_service(
+        session_factory,
+        now,
+        UUID("00000000-0000-4000-8000-000000000097"),
+        UUID("00000000-0000-4000-8000-000000000098"),
+    )
+    original_add_record = SqlAlchemyIdempotencyRepository.add_record
+
+    async def add_invalid_record(
+        repository: SqlAlchemyIdempotencyRepository,
+        **kwargs: object,
+    ) -> None:
+        await original_add_record(repository, **kwargs)
+        pending_record = next(
+            record for record in repository._session.new if isinstance(record, IdempotencyRecord)
+        )
+        pending_record.response_status = 199
+
+    monkeypatch.setattr(SqlAlchemyIdempotencyRepository, "add_record", add_invalid_record)
+
+    try:
+        with pytest.raises(IntegrityError, match="ck_idempotency_response_status"):
+            await service.create_hold(
+                event_seat_id=DEMO_EVENT_SEAT_IDS[0],
+                owner_id=DEMO_USER_ID,
+                idempotency_key="rollback-hold-and-idempotency",
+            )
+
+        async with engine.connect() as connection:
+            hold_count = await connection.scalar(text("SELECT count(*) FROM seat_holds"))
+            idempotency_count = await connection.scalar(
+                text("SELECT count(*) FROM idempotency_records")
+            )
+    finally:
+        await engine.dispose()
+
+    assert hold_count == 0
+    assert idempotency_count == 0
 
 
 @pytest.mark.asyncio
@@ -376,17 +533,41 @@ async def test_simultaneous_hold_requests_create_one_winner_that_can_be_confirme
                 {"id": second_owner_id},
             )
 
-        first_service = _hold_service(session_factory, now, first_hold_id)
-        second_service = _hold_service(session_factory, now, second_hold_id)
+        first_service = _hold_service(
+            session_factory,
+            now,
+            first_hold_id,
+            UUID("00000000-0000-4000-8000-000000000084"),
+        )
+        second_service = _hold_service(
+            session_factory,
+            now,
+            second_hold_id,
+            UUID("00000000-0000-4000-8000-000000000085"),
+        )
         outcomes = await asyncio.gather(
-            first_service.create_hold(event_seat_id=DEMO_EVENT_SEAT_IDS[0], owner_id=DEMO_USER_ID),
+            first_service.create_hold(
+                event_seat_id=DEMO_EVENT_SEAT_IDS[0],
+                owner_id=DEMO_USER_ID,
+                idempotency_key="parallel-key-a",
+            ),
             second_service.create_hold(
-                event_seat_id=DEMO_EVENT_SEAT_IDS[0], owner_id=second_owner_id
+                event_seat_id=DEMO_EVENT_SEAT_IDS[0],
+                owner_id=second_owner_id,
+                idempotency_key="parallel-key-b",
             ),
             return_exceptions=True,
         )
 
-        winning_hold = next(outcome for outcome in outcomes if isinstance(outcome, SeatHold))
+        winning_result = next(
+            outcome for outcome in outcomes if isinstance(outcome, HoldCreationResult)
+        )
+        winning_hold_id = UUID(json.loads(winning_result.response_body)["id"])
+        async with engine.connect() as connection:
+            winning_owner_id = await connection.scalar(
+                text("SELECT owner_id FROM seat_holds WHERE id = :id"),
+                {"id": winning_hold_id},
+            )
         reservation_service = _reservation_service(
             session_factory,
             now,
@@ -394,8 +575,8 @@ async def test_simultaneous_hold_requests_create_one_winner_that_can_be_confirme
             UUID("00000000-0000-4000-8000-000000000083"),
         )
         confirmation = await reservation_service.confirm(
-            hold_id=winning_hold.id,
-            owner_id=winning_hold.owner_id,
+            hold_id=winning_hold_id,
+            owner_id=winning_owner_id,
             idempotency_key="winning-hold-confirmation",
         )
 
@@ -410,18 +591,18 @@ async def test_simultaneous_hold_requests_create_one_winner_that_can_be_confirme
             )
             final_hold_status = await connection.scalar(
                 text("SELECT status FROM seat_holds WHERE id = :id"),
-                {"id": winning_hold.id},
+                {"id": winning_hold_id},
             )
     finally:
         await engine.dispose()
 
-    assert sum(isinstance(outcome, SeatHold) for outcome in outcomes) == 1
+    assert sum(isinstance(outcome, HoldCreationResult) for outcome in outcomes) == 1
     assert sum(isinstance(outcome, SeatUnavailable) for outcome in outcomes) == 1
     assert confirmation.status_code == 201
     assert hold_count == 1
     assert active_hold_count == 0
     assert reservation_count == 1
-    assert reservation_hold_id == winning_hold.id
+    assert reservation_hold_id == winning_hold_id
     assert final_hold_status == "confirmed"
 
 
@@ -436,16 +617,18 @@ async def test_confirmation_rolls_back_all_writes_when_idempotency_insert_violat
     session_factory = create_session_factory(engine)
     now = datetime(2026, 9, 11, 12, 0, tzinfo=UTC)
     hold_id = UUID("00000000-0000-4000-8000-000000000090")
-    original_add_idempotency_record = SqlAlchemyReservationRepository.add_idempotency_record
+    original_add_idempotency_record = SqlAlchemyIdempotencyRepository.add_record
 
     async def add_invalid_idempotency_record(
-        repository: SqlAlchemyReservationRepository,
+        repository: SqlAlchemyIdempotencyRepository,
         *,
         id: UUID,
         owner_id: UUID,
+        operation: str,
         key: str,
         request_fingerprint: str,
-        reservation_id: UUID,
+        hold_id: UUID | None,
+        reservation_id: UUID | None,
         completed_at: datetime,
         response_body: str,
     ) -> None:
@@ -453,8 +636,10 @@ async def test_confirmation_rolls_back_all_writes_when_idempotency_insert_violat
             repository,
             id=id,
             owner_id=owner_id,
+            operation=operation,
             key=key,
             request_fingerprint=request_fingerprint,
+            hold_id=hold_id,
             reservation_id=reservation_id,
             completed_at=completed_at,
             response_body=response_body,
@@ -466,8 +651,8 @@ async def test_confirmation_rolls_back_all_writes_when_idempotency_insert_violat
         pending_record.response_status = 199
 
     monkeypatch.setattr(
-        SqlAlchemyReservationRepository,
-        "add_idempotency_record",
+        SqlAlchemyIdempotencyRepository,
+        "add_record",
         add_invalid_idempotency_record,
     )
 
@@ -553,11 +738,13 @@ def _hold_service(
     session_factory,
     now: datetime,
     hold_id: UUID,
+    idempotency_id: UUID,
 ) -> HoldService:
+    generated_ids = iter((hold_id, idempotency_id))
     return HoldService(
         unit_of_work_factory=lambda: SqlAlchemyHoldUnitOfWork(session_factory),
         clock=_FixedClock(now),
-        id_factory=lambda: hold_id,
+        id_factory=lambda: next(generated_ids),
         hold_duration=timedelta(minutes=5),
     )
 

@@ -13,6 +13,13 @@ class SeatHold:
     expires_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class HoldCreationResult:
+    status_code: int
+    response_body: str
+    replayed: bool
+
+
 class EventSeatNotFound(Exception):
     pass
 

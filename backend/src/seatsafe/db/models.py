@@ -135,6 +135,12 @@ class IdempotencyRecord(Base):
             "response_status BETWEEN 200 AND 599",
             name="ck_idempotency_response_status",
         ),
+        CheckConstraint(
+            "(operation = 'create_hold' AND hold_id IS NOT NULL AND reservation_id IS NULL) "
+            "OR (operation = 'confirm_reservation' AND hold_id IS NULL "
+            "AND reservation_id IS NOT NULL)",
+            name="ck_idempotency_operation_outcome",
+        ),
         Index(
             "uq_idempotency_owner_operation_key",
             "owner_id",
@@ -150,6 +156,7 @@ class IdempotencyRecord(Base):
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
     request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     response_status: Mapped[int] = mapped_column(Integer, nullable=False)
-    reservation_id: Mapped[UUID] = mapped_column(ForeignKey("reservations.id"), nullable=False)
+    hold_id: Mapped[UUID | None] = mapped_column(ForeignKey("seat_holds.id"))
+    reservation_id: Mapped[UUID | None] = mapped_column(ForeignKey("reservations.id"))
     completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     response_body: Mapped[str] = mapped_column(Text, nullable=False)

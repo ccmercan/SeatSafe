@@ -6,12 +6,13 @@ SeatSafe is a native iOS event-seat reservation application and a production-sty
 
 **Phase 1: reservation-core vertical slice complete.** The FastAPI service includes
 configuration, demo identity injection, correlation IDs, Problem Details responses, the
-initial PostgreSQL migration, deterministic demo seeding,
+PostgreSQL schema migrations, deterministic demo seeding,
 `GET /v1/events/{event_id}/seats`, `POST /v1/holds`, and
 `POST /v1/reservations` with database-backed idempotency. PostgreSQL tests cover
-competing hold requests, same-key replay, different-key confirmation attempts, and
-transaction rollback after a real database constraint failure. The full backend suite
-passes with 41 tests. Phase 2 has started: ADR-002 accepts Swift structured concurrency,
+competing hold requests, hold and confirmation same-key replay, different-key
+confirmation attempts, and transaction rollback after a real database constraint
+failure. Hold creation's idempotency extension is recorded in ADR-014. Phase 2 has started:
+ADR-002 accepts Swift structured concurrency,
 ADR-012 sets the iOS 17 deployment target, and ADR-013 selects lightweight SwiftUI feature
 models with injected async services. The client can load the seat snapshot and locally
 select one available seat; creating a server hold is the next client behavior.
@@ -58,6 +59,7 @@ Discover event -> inspect event -> select seat -> hold seat
 - [ADR-011: Return one event-seat availability snapshot](docs/decisions/011-return-an-event-seat-availability-snapshot.md)
 - [ADR-012: Set the minimum iOS deployment target to iOS 17](docs/decisions/012-set-ios-deployment-target.md)
 - [ADR-013: Use lightweight SwiftUI feature models](docs/decisions/013-use-lightweight-swiftui-feature-models.md)
+- [ADR-014: Use database-backed idempotency for hold creation](docs/decisions/014-use-idempotency-for-hold-creation.md)
 
 ## Planned repository shape
 
@@ -78,7 +80,8 @@ This is a learning-first project. Major decisions are discussed, compared, recor
 ## Current implementation slice
 
 The client architecture is set by ADR-013. Seat loading and local selection are
-implemented. Before wiring the next action to `POST /v1/holds`, define how the client will
-recover when the server creates a hold but its response is lost. The database permits only
-one active hold per event-seat, so the tested race is between two hold requests; exactly
-one request creates the valid hold that may then be confirmed.
+implemented. ADR-014 now makes `POST /v1/holds` safe to retry using a stable request key;
+the next step is choosing where the iOS client will retain that key while a hold attempt is
+in progress, then wiring the hold action. The database permits only one active hold per
+event-seat, so the seat row lock remains necessary even with idempotency: different
+customers use different keys while competing for the same seat.

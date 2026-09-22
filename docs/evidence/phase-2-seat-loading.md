@@ -13,9 +13,18 @@
 - URLSession service decoding the existing backend snapshot endpoint and stable demo event.
 - XCTest coverage for service result/error mapping, backend JSON decoding, and selection.
 - Local-network-only App Transport Security allowance for the local development API.
+- Backend hold creation now requires a stable `Idempotency-Key`; same-key retries return
+  the original successful response, while a key reused for another seat is rejected.
+  Database changes and concurrency/rollback test evidence are documented in
+  [ADR-014](../decisions/014-use-idempotency-for-hold-creation.md).
 
 ## Validation
 
+- Backend validation for the hold-idempotency foundation:
+  from `backend/`, `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -p pytest_asyncio.plugin -q`
+  passed: **48 tests, 0 failures**. `ruff check src tests` and
+  `ruff format --check src tests` passed. PostgreSQL integration cases include same-key
+  concurrency, key mismatch, and atomic rollback.
 - `xcodebuild ... build-for-testing` completed successfully for the generic iOS Simulator
   destination. This compiles both the app and XCTest target; it does not execute tests.
 - An app build for the installed simulator SDK completed successfully before the plist
@@ -29,6 +38,6 @@
 
 - The event ID and loopback API address are demo configuration, not user-selectable event
   discovery or production environment configuration.
-- A retry/reconciliation policy for an ambiguous hold response, caching, hold creation,
-  and confirmation remain future vertical slices; the selected seat is still only local UI
-  state and the backend remains authoritative for availability.
+- The iOS hold action is not yet wired. Its pending key-storage/recovery lifecycle needs
+  an explicit decision; selected seat remains local UI state, and the backend remains
+  authoritative for availability.

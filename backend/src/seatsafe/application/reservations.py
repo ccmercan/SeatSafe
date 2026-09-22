@@ -6,6 +6,7 @@ from typing import Protocol, Self
 from uuid import UUID
 
 from seatsafe.application.holds import Clock
+from seatsafe.application.idempotency import IdempotencyRepository
 from seatsafe.domain.holds import (
     HoldExpired,
     HoldNotActive,
@@ -27,19 +28,7 @@ class ConfirmableHold(Protocol):
     expires_at: datetime
 
 
-class StoredConfirmation(Protocol):
-    request_fingerprint: str
-    response_status: int
-    response_body: str
-
-
 class ReservationRepository(Protocol):
-    async def lock_idempotency_key(self, *, owner_id: UUID, key: str) -> None: ...
-
-    async def get_idempotency_record(
-        self, *, owner_id: UUID, key: str
-    ) -> StoredConfirmation | None: ...
-
     async def get_hold(self, hold_id: UUID) -> ConfirmableHold | None: ...
 
     async def lock_event_seat(self, event_seat_id: UUID) -> bool: ...
@@ -52,21 +41,10 @@ class ReservationRepository(Protocol):
 
     async def flush(self) -> None: ...
 
-    async def add_idempotency_record(
-        self,
-        *,
-        id: UUID,
-        owner_id: UUID,
-        key: str,
-        request_fingerprint: str,
-        reservation_id: UUID,
-        completed_at: datetime,
-        response_body: str,
-    ) -> None: ...
-
 
 class ReservationUnitOfWork(Protocol):
     reservations: ReservationRepository
+    idempotency: IdempotencyRepository
 
     async def __aenter__(self) -> Self: ...
 
@@ -104,9 +82,14 @@ class ReservationService:
 
         async with self._unit_of_work_factory() as unit_of_work:
             repository = unit_of_work.reservations
-            await repository.lock_idempotency_key(owner_id=owner_id, key=idempotency_key)
-            previous = await repository.get_idempotency_record(
+            await unit_of_work.idempotency.lock_key(
                 owner_id=owner_id,
+                operation=OPERATION,
+                key=idempotency_key,
+            )
+            previous = await unit_of_work.idempotency.get_record(
+                owner_id=owner_id,
+                operation=OPERATION,
                 key=idempotency_key,
             )
             if previous is not None:
@@ -157,11 +140,13 @@ class ReservationService:
                 # Flush sends the reservation INSERT first but does not commit;
                 # both rows still succeed or roll back together.
                 await repository.flush()
-                await repository.add_idempotency_record(
+                await unit_of_work.idempotency.add_record(
                     id=self._id_factory(),
                     owner_id=owner_id,
+                    operation=OPERATION,
                     key=idempotency_key,
                     request_fingerprint=fingerprint,
+                    hold_id=None,
                     reservation_id=reservation.id,
                     completed_at=now,
                     response_body=response_body,
