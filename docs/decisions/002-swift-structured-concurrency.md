@@ -77,7 +77,13 @@ Choose **Option B** for the initial release.
 - Cancel obsolete search, event-loading, or seat-loading work.
 - Protect against stale results with task ownership or request identity rather than assuming cancellation always wins.
 - Prevent repeated UI actions while an equivalent operation is in flight.
-- Treat reservation cancellation as potentially ambiguous after the network request begins; reconcile with the backend when necessary.
+- Give each logical confirmation attempt one stable idempotency key. Reuse that key and
+  the same request input for transport retries; generate a new key only for a genuinely
+  new confirmation attempt.
+- Treat cancellation of the local Swift task for an in-flight confirmation as ambiguous:
+  cancelling the client's wait does not prove the server stopped processing the request.
+  If the outcome is unknown, retry with the same key to recover the backend's saved
+  response rather than starting a second logical confirmation.
 - Introduce an actor only for shared mutable state that is not already confined to the main actor.
 
 ## Rationale
@@ -99,8 +105,11 @@ Before this decision is considered successfully implemented:
 
 1. A controlled test proves that an older event response cannot replace a newer selection.
 2. A controlled test proves that replacing a search cancels or safely ignores the previous result.
-3. A repeated reservation action produces one logical client operation and one stable idempotency key.
-4. A cancellation test covers the ambiguous case in which the server may have accepted the operation.
+3. Repeated taps during one in-flight confirmation produce one logical client operation;
+   every retry uses its stable idempotency key and unchanged request input, while a new
+   user intent gets a new key.
+4. A controlled test simulates the server accepting a confirmation while the client loses
+   the response, then verifies retrying with the same key recovers the original result.
 5. Observable UI-state mutations satisfy main-actor isolation.
 6. No concurrency test requires a fixed-duration sleep.
 7. The owner can explain why server correctness cannot be delegated to the Swift client.
@@ -122,4 +131,3 @@ Before changing this ADR to **Accepted**, answer:
 2. Which operations should be cancelled when a screen disappears, and which must be reconciled instead?
 3. Can we identify any shared mutable state that truly requires its own actor in the first release?
 4. Are we comfortable using Combine only if a concrete stream problem later justifies it?
-
