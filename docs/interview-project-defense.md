@@ -29,7 +29,7 @@ Remaining evidence to add:
 
 ### How will the system prevent double booking?
 
-Status: ADR-003 accepted; hold and confirmation use event-seat row locks. A controlled competing-request integration result remains pending.
+Status: ADR-003 accepted; PostgreSQL integration tests cover two callers competing to hold one event-seat and the winner's confirmation. The partial unique index means two active holds for the same event-seat are not a valid competing-confirmation setup.
 
 Draft answer:
 
@@ -44,7 +44,7 @@ Evidence to add:
 
 ### How will integration tests remain deterministic?
 
-Status: ADR-004 accepted; disposable migration, guarded repeated seeding, and repository integration evidence completed on 2026-09-11. Concurrent-connection evidence remains pending.
+Status: ADR-004 accepted; disposable migration, guarded repeated seeding, repository tests, and concurrent-connection integration evidence are complete.
 
 Draft answer:
 
@@ -89,7 +89,7 @@ Evidence to add:
 
 ### How does confirmation remain safe when a request is retried?
 
-Status: ADR-007 accepted; the HTTP header contract, confirmation service, and PostgreSQL same-hold concurrency evidence are implemented (39 backend tests passed on 2026-09-22).
+Status: ADR-007 accepted; the HTTP header contract, confirmation service, PostgreSQL retry/concurrency evidence, and forced database-constraint rollback test are implemented (41 backend tests passed on 2026-09-22).
 
 Draft answer:
 
@@ -97,8 +97,8 @@ Draft answer:
 
 Remaining evidence to add:
 
-- Forced transaction failure proving reservation and idempotency record roll back together
-- Broader PostgreSQL contention test with independently created competing holds
+- CI execution of the complete backend suite on a clean checkout
+- Production idempotency retention policy before any production-readiness claim
 
 ### How does Phase 1 identify the current user?
 

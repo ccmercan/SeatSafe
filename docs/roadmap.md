@@ -19,7 +19,7 @@ Exit condition: the owner reviews the documents and accepts or revises ADR-001.
 
 ## Phase 1: Reservation-core vertical slice
 
-Status: in progress. The backend foundation, disposable PostgreSQL environment, initial schema migration, hold creation, deterministic demo seeding, seat-retrieval snapshot, and reservation confirmation with database-backed idempotency have been implemented. PostgreSQL integration tests prove same-key replay and prevent two simultaneous confirmations of one hold. A broader competition test using independently created holds and transaction-failure evidence remain pending.
+Status: complete. The backend foundation, disposable PostgreSQL environment, initial schema migration, hold creation, deterministic demo seeding, seat-retrieval snapshot, and reservation confirmation with database-backed idempotency are implemented. PostgreSQL integration tests prove that two hold requests competing for one event-seat produce one valid hold, same-key retries replay one result, different-key confirmations cannot confirm one hold twice, and a forced database constraint failure rolls back the entire confirmation transaction. The backend suite passes with 41 tests.
 
 Scope:
 
@@ -36,9 +36,11 @@ Key decisions:
 - Database schema and concurrency-control strategy
 - Test database lifecycle
 
-Exit condition: automated concurrent tests demonstrate the core invariant for independently created competing holds, and transaction-failure testing proves reservation and idempotency writes roll back together.
+Exit condition: met. PostgreSQL concurrency tests demonstrate one valid hold winner for competing callers; confirmation tests demonstrate one reservation and safe retries; a forced database constraint failure demonstrates that the hold transition, reservation, and idempotency record commit or roll back together.
 
 ## Phase 2: Native iOS vertical slice
+
+Status: not started. Review and accept or revise ADR-002 before implementation.
 
 Scope:
 

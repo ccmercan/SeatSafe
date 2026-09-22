@@ -401,7 +401,7 @@ def quality_strategy() -> list[dict[str, Any]]:
     d.text(
         110,
         825,
-        "39 backend tests passed, including PostgreSQL confirmation races for same-key retries and competing keys on one hold. A broader competing-hold race, forced transaction rollback, iOS behavior, CI behavior, performance, and production scale are not yet proven.",
+        "41 backend tests passed, including competing PostgreSQL hold requests, safe confirmation retries, and rollback after a real check-constraint failure. iOS behavior, CI behavior, performance, and production scale are not yet proven.",
         size=18,
         color=MUTED,
     )
@@ -413,11 +413,11 @@ def roadmap() -> list[dict[str, Any]]:
     heading(
         d,
         "SeatSafe learning roadmap",
-        "Each phase ends with evidence, not just more code. The current focus is finishing the reservation core.",
+        "Each phase ends with evidence, not just more code. The reservation core is complete; the next step is reviewing ADR-002 before iOS implementation.",
     )
     phases = [
         (60, 220, "Phase 0", "Foundation\ncomplete", GREEN, "Accepted ADR-001\nrequirements + risks"),
-        (310, 220, "Phase 1", "Reservation core\nin progress", YELLOW, "Seats + holds built\nconfirmation + race next"),
+        (310, 220, "Phase 1", "Reservation core\ncomplete", GREEN, "Seats + holds + confirmation\nPostgreSQL race + rollback proof"),
         (560, 220, "Phase 2", "Native iOS\nfuture", GRAY, "SwiftUI flow\ncontrolled async state"),
         (810, 220, "Phase 3", "UI automation\nfuture", GRAY, "Stable identifiers\ndeterministic scenarios"),
         (1060, 220, "Phase 4", "CI signals\nfuture", GRAY, "PR gates\nretained diagnostics"),

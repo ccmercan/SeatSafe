@@ -4,14 +4,14 @@ SeatSafe is a native iOS event-seat reservation application and a production-sty
 
 ## Current status
 
-**Phase 1: reservation-core vertical slice in progress.** The FastAPI service now
-includes configuration, demo identity injection, correlation IDs, Problem Details
-responses, the initial PostgreSQL migration, deterministic demo seeding,
+**Phase 1: reservation-core vertical slice complete.** The FastAPI service includes
+configuration, demo identity injection, correlation IDs, Problem Details responses, the
+initial PostgreSQL migration, deterministic demo seeding,
 `GET /v1/events/{event_id}/seats`, `POST /v1/holds`, and
-`POST /v1/reservations` with database-backed idempotency. PostgreSQL tests now prove
-same-key replay and reject two simultaneous confirmations of the same hold. A broader
-competition test using independently created holds and forced transaction-failure
-evidence are still outstanding.
+`POST /v1/reservations` with database-backed idempotency. PostgreSQL tests cover
+competing hold requests, same-key replay, different-key confirmation attempts, and
+transaction rollback after a real database constraint failure. The full backend suite
+passes with 41 tests. Phase 2 begins after review of proposed ADR-002.
 
 ## Why this project exists
 
@@ -72,6 +72,7 @@ This is a learning-first project. Major decisions are discussed, compared, recor
 
 ## Next decision
 
-Expand the concurrency proof to independently created holds competing for one seat and
-add a forced transaction-failure test. ADR-002 remains proposed and will be reviewed
-before the native iOS phase begins.
+Review proposed ADR-002 and decide the client concurrency approach before starting the
+native iOS vertical slice. The database permits only one active hold per event-seat, so
+the tested race is between two hold requests; exactly one request creates the valid hold
+that may then be confirmed.

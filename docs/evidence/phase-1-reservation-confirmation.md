@@ -1,7 +1,7 @@
 # Phase 1 evidence: confirm a reservation safely under retries
 
 - **Date:** 2026-09-22
-- **Checkpoint status:** Implemented and locally validated against PostgreSQL
+- **Checkpoint status:** Phase 1 complete; locally validated against PostgreSQL
 
 ## Behavior delivered
 
@@ -40,16 +40,26 @@ another configured user returns `403 hold_owner_mismatch`; a missing hold return
   problem response.
 - PostgreSQL integration tests use independent sessions to check simultaneous same-key
   replay and different-key attempts to confirm the same hold.
+- A PostgreSQL integration test starts two hold requests for the same event-seat from
+  separate users and service instances. The event-seat row lock allows one hold to be
+  created; the waiting request sees that hold and receives `SeatUnavailable`. The winning
+  hold is then confirmed successfully. Two active holds are intentionally impossible
+  under the partial unique index, so racing two pre-existing active holds at confirmation
+  would create invalid fixture state rather than test a supported scenario.
+- A PostgreSQL integration test changes the pending idempotency response status to `199`
+  after the reservation has been flushed. The real database check constraint rejects the
+  idempotency insert; a new database session verifies the hold is still active and there
+  are no reservation or idempotency rows.
 
 ## Measured validation
 
 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -p pytest_asyncio.plugin -ra` from
-`backend/` completed with **39 passed** in 1.09 seconds against the disposable PostgreSQL
-container. The two concurrency tests used independent service instances and database
-sessions: one verified same-key replay creates one reservation and one stored result;
-the other verified different keys cannot confirm the same hold twice. Pytest reported two
-dependency deprecation warnings from Starlette's test client integration; they did not
-fail the suite.
+`backend/` completed with **41 passed** in 1.35 seconds against the disposable PostgreSQL
+container. PostgreSQL coverage includes same-key replay, different-key confirmation of
+one hold, competing requests to create a hold, successful confirmation of the winner, and
+rollback after a database check-constraint failure. Pytest reported two dependency
+deprecation warnings from Starlette's test client integration; they did not fail the
+suite.
 
 ## Known limitations
 
@@ -61,5 +71,9 @@ fail the suite.
   serialize unrelated keys but cannot merge their stored records or change correctness.
 - Same-key serialization and seat serialization are separate: the idempotency lock
   protects one logical request key, while the seat row lock protects inventory state.
-- A controlled test of two independently created holds racing for the same seat and a
-  forced rollback after partial in-transaction work remain to be added.
+- Two simultaneously active holds for the same event-seat are not a valid database state;
+  the partial unique index forbids them. The realistic race is tested at hold creation,
+  followed by confirmation of the winner.
+- The rollback test injects a database check-constraint failure in test code. It proves
+  transaction atomicity for that failure point, not recovery from every possible network,
+  process, or storage failure.
