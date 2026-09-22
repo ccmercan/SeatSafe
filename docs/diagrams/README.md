@@ -12,12 +12,12 @@ or need to export only one topic.
 | File | What it teaches | Project truth represented |
 |---|---|---|
 | `00-seatsafe-master-learning-pack.excalidraw` | All seven diagrams on one large editable canvas | Same content as the individual files, arranged for panning and presentation |
-| `01-decision-map.excalidraw` | How ADR-001 through ADR-011 relate | ADR-002 is still proposed; the others are accepted |
+| `01-decision-map.excalidraw` | How ADR-001 through ADR-012 relate | ADR-002 and ADR-012 are accepted; Phase 2 client implementation is starting |
 | `02-backend-architecture.excalidraw` | The route → service → repository → PostgreSQL boundaries | Current backend read and hold paths; iOS is marked future |
 | `03-seat-lifecycle-and-race.excalidraw` | Seat states and why row locking prevents a race | Competing hold requests, winner confirmation, and same-hold confirmation races are tested against PostgreSQL |
 | `04-idempotency-flow.excalidraw` | Why retries need both idempotency and uniqueness | Implemented ADR-007 confirmation and exact-response replay flow |
 | `05-quality-strategy.excalidraw` | Which test layer proves which behavior | Current 41-test checkpoint plus explicit non-claims |
-| `06-learning-roadmap.excalidraw` | Why the project phases happen in this order | Phases 0 and 1 complete; Phase 2 awaits ADR-002 review; later phases future |
+| `06-learning-roadmap.excalidraw` | Why the project phases happen in this order | Phases 0 and 1 complete; ADR-002 and ADR-012 accepted; Phase 2 implementation is starting |
 | `07-database-model.excalidraw` | How stable venue data connects to hold, reservation, and retry history | Current PostgreSQL schema and its important uniqueness boundaries |
 
 ## How to use the files

@@ -11,7 +11,9 @@ initial PostgreSQL migration, deterministic demo seeding,
 `POST /v1/reservations` with database-backed idempotency. PostgreSQL tests cover
 competing hold requests, same-key replay, different-key confirmation attempts, and
 transaction rollback after a real database constraint failure. The full backend suite
-passes with 41 tests. Phase 2 begins after review of proposed ADR-002.
+passes with 41 tests. Phase 2 has started: ADR-002 is accepted and ADR-012 sets the iOS 17
+deployment target. The next client decision is the smallest architecture boundary for the
+first SwiftUI vertical slice.
 
 ## Why this project exists
 
@@ -53,6 +55,7 @@ Discover event -> inspect event -> select seat -> hold seat
 - [ADR-009: Standardize API errors with Problem Details](docs/decisions/009-standardize-api-problem-details.md)
 - [ADR-010: Use Docker Desktop for local containers](docs/decisions/010-use-docker-desktop-for-local-containers.md)
 - [ADR-011: Return one event-seat availability snapshot](docs/decisions/011-return-an-event-seat-availability-snapshot.md)
+- [ADR-012: Set the minimum iOS deployment target to iOS 17](docs/decisions/012-set-ios-deployment-target.md)
 
 ## Planned repository shape
 
@@ -72,7 +75,7 @@ This is a learning-first project. Major decisions are discussed, compared, recor
 
 ## Next decision
 
-Review proposed ADR-002 and decide the client concurrency approach before starting the
-native iOS vertical slice. The database permits only one active hold per event-seat, so
-the tested race is between two hold requests; exactly one request creates the valid hold
-that may then be confirmed.
+Choose the client architecture boundary for the first SwiftUI vertical slice. ADR-002's
+concurrency approach and ADR-012's iOS 17 deployment target are accepted. The database
+permits only one active hold per event-seat, so the tested race is between two hold
+requests; exactly one request creates the valid hold that may then be confirmed.

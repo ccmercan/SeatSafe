@@ -1,6 +1,6 @@
 # ADR-002: Manage client work with Swift structured concurrency
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-09-11
 - **Decision owners:** Project owner and implementation collaborator
 
@@ -125,9 +125,16 @@ Reconsider this decision if:
 
 ## Owner review
 
-Before changing this ADR to **Accepted**, answer:
+Accepted by the project owner on 2026-09-22 as **Option B**.
 
-1. Does main-actor feature state match the client architecture we intend to use?
-2. Which operations should be cancelled when a screen disappears, and which must be reconciled instead?
-3. Can we identify any shared mutable state that truly requires its own actor in the first release?
-4. Are we comfortable using Combine only if a concrete stream problem later justifies it?
+- Observable feature/UI state is isolated to `@MainActor`.
+- Replaceable reads (such as event, seat, or search requests) may be cancelled when they
+  become obsolete or their feature exits. Cancellation of a local task is not proof that
+  a server-side write stopped.
+- A confirmation retry reuses the same idempotency key and request input to recover the
+  backend's saved response. Hold-creation recovery after an ambiguous network outcome must
+  be defined with that API flow; it must not be treated as a read cancellation.
+- No additional actor is required by default; add one only for shared mutable state that
+  is not already confined to the main actor.
+- Use Swift structured concurrency for the initial implementation. Revisit Combine only
+  if a concrete stream-composition problem makes it materially clearer.

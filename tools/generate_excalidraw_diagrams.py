@@ -206,10 +206,9 @@ def decision_map() -> list[dict[str, Any]]:
         375,
         300,
         155,
-        "ADR-002 · Proposed",
-        "Use Swift structured concurrency\nand main-actor UI state\n(not accepted or built yet)",
-        fill=YELLOW,
-        style="dashed",
+        "ADR-002 · Accepted",
+        "Use Swift structured concurrency\nand main-actor UI state\n(iOS implementation begins Phase 2)",
+        fill=WHITE,
     )
 
     d.card(445, 210, 300, 135, "ADR-003 · Accepted", "Serialize seat changes with\nrow locks + constraints", fill=WHITE)
@@ -222,7 +221,7 @@ def decision_map() -> list[dict[str, Any]]:
     d.card(825, 720, 300, 135, "ADR-011 · Accepted", "Return one ordered seat-status\nsnapshot per event", fill=WHITE)
 
     d.card(1205, 210, 300, 150, "ADR-004 · Accepted", "Disposable PostgreSQL + direct,\nguarded reset/seed fixtures", fill=WHITE)
-    d.card(1205, 410, 300, 150, "ADR-010 · Accepted", "Docker Desktop runs the local\nPostgreSQL container", fill=WHITE)
+    d.card(1205, 410, 300, 150, "ADR-010 + ADR-012 · Accepted", "Docker Desktop test DB\nMinimum iOS deployment: 17", fill=WHITE)
 
     d.arrow(365, 275, 445, 275)
     d.arrow(745, 278, 825, 278)
@@ -413,12 +412,12 @@ def roadmap() -> list[dict[str, Any]]:
     heading(
         d,
         "SeatSafe learning roadmap",
-        "Each phase ends with evidence, not just more code. The reservation core is complete; the next step is reviewing ADR-002 before iOS implementation.",
+        "Each phase ends with evidence, not just more code. ADR-002 and ADR-012 are accepted; Phase 2 is building the SwiftUI client with an iOS 17 minimum target.",
     )
     phases = [
         (60, 220, "Phase 0", "Foundation\ncomplete", GREEN, "Accepted ADR-001\nrequirements + risks"),
         (310, 220, "Phase 1", "Reservation core\ncomplete", GREEN, "Seats + holds + confirmation\nPostgreSQL race + rollback proof"),
-        (560, 220, "Phase 2", "Native iOS\nfuture", GRAY, "SwiftUI flow\ncontrolled async state"),
+        (560, 220, "Phase 2", "Native iOS\nin progress", YELLOW, "SwiftUI flow\niOS 17 minimum target"),
         (810, 220, "Phase 3", "UI automation\nfuture", GRAY, "Stable identifiers\ndeterministic scenarios"),
         (1060, 220, "Phase 4", "CI signals\nfuture", GRAY, "PR gates\nretained diagnostics"),
         (1310, 220, "Phase 5", "Quality depth\nfuture", GRAY, "Offline · accessibility\nperformance baselines"),
