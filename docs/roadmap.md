@@ -76,26 +76,36 @@ product feature and is not implemented.
 
 ## Phase 3: UI automation and testability
 
-Status: in progress. ADR-017 selects a host-side test runner with disposable PostgreSQL and
-the real API for the first smoke journey. The shared Xcode scheme now contains an XCUITest
-target for selecting a seat, creating a hold, confirming it, and checking the displayed
-reservation ID. The runner starts, migrates, seeds, and tears down its services. Conflict,
-expiration, and error journeys remain future coverage.
+Status: complete. ADR-017 selects a host-side test runner with disposable PostgreSQL and the
+real API. The shared Xcode scheme covers the critical reservation journey (select, hold,
+confirm, and check the reservation ID), stale-availability conflict, hold expiration, and
+API-unavailable/retry behavior. The expiry journey uses the real API with an accelerated
+configured duration. The unavailable-service journey runs with the API stopped; no test-only
+backend error mode was needed. Model-level tests cover ambiguous write failures and safe
+idempotent retries.
+
+The full runner passed twice consecutively after the final changes. Each run passed 21 unit
+tests, 2 normal UI journeys, 1 isolated expiration UI journey, and 1 isolated API-unavailable
+UI journey. Xcode result bundles retain logs and failure diagnostics, with a screenshot
+attached when a UI test records a failure. The runner handles backend setup and cleanup.
 
 Scope:
 
 - Stable accessibility identifiers
 - Deterministic scenario control
 - Critical XCUITest smoke journey
-- Conflict, expiration, and error scenarios
+- Conflict, expiration, and service-unavailable scenarios
 - Failure screenshots and result bundles
 
-Remaining decisions:
+Implementation notes:
 
-- UI test abstraction style
-- Whether later error journeys need additional test-only scenario setup
+- No extra UI-test abstraction was needed for the current four journeys; helpers can be added
+  if later scenarios create meaningful duplication.
+- The current UI error journey covers seat loading and retry; model-level tests cover ambiguous
+  write failures. Offline recovery and broader accessibility/localization journeys are outside
+  the current Phase 3 exit scope.
 
-Exit condition: UI tests can run repeatedly without manual setup and produce useful diagnostics.
+Exit condition: met. Phase 4 has not started; no CI/release workflow was added.
 
 ## Phase 4: CI and release signals
 

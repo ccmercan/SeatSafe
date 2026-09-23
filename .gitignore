@@ -30,3 +30,6 @@ build/
 coverage/
 *.xcresult
 *.junit.xml
+
+# Personal learning notes stay in the local workspace, not in repository history.
+docs/study-plan-phases-2-and-3.md

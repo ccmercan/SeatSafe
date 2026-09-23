@@ -85,6 +85,10 @@ Choose **Option A** for the first XCUITest smoke journey.
   endpoint.
 - The initial smoke test covers seat selection, hold creation, reservation confirmation,
   and display of the returned reservation ID. More failure scenarios remain separate work.
+- For the stale-availability conflict journey, XCUITest sends a competing hold request to the
+  real API after the app loads seats and before the app submits its own hold. This models
+  another client without adding scenario endpoints or changing the stable demo seed. Each
+  journey uses a different seeded seat so one UI test cannot consume another's starting state.
 
 ## Rationale
 
@@ -105,6 +109,8 @@ realistic test from consuming or polluting manual demo data.
 5. The app's pending-flow reset argument has no effect in Release builds.
 6. Two consecutive runner executions start from clean seat availability and pass without
    fixed-duration sleeps or automatic test retries.
+7. A competing hold request receives HTTP 201; the app's subsequent request is rejected,
+   displays the unavailable state, refreshes the seat to held, and disables its selection.
 
 ## Revisit triggers
 

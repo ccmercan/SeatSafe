@@ -351,10 +351,11 @@ struct SeatListView: View {
                         Label("Couldn’t load seats", systemImage: "wifi.exclamationmark")
                     } description: {
                         Text("Check that the SeatSafe API is running, then try again.")
+                            .accessibilityIdentifier("seat-list.error")
                     } actions: {
                         Button("Try Again") { Task { await model.load(eventID: demoEventID) } }
+                            .accessibilityIdentifier("seat-list.retry")
                     }
-                    .accessibilityIdentifier("seat-list.error")
                 case .loaded(let seats) where seats.isEmpty:
                     ContentUnavailableView("No seats found", systemImage: "chair.lounge")
                 case .loaded(let seats):
@@ -365,7 +366,10 @@ struct SeatListView: View {
                         } label: {
                             HStack {
                                 VStack(alignment: .leading) {
-                                    Text(seat.displayName).font(.headline)
+                                    Text(seat.displayName)
+                                        .font(.headline)
+                                        .accessibilityIdentifier(
+                                            "seat-row-title.\(seat.id.uuidString.lowercased())")
                                     Text(seat.status.rawValue.capitalized).font(.subheadline)
                                         .foregroundStyle(.secondary)
                                 }
@@ -441,6 +445,7 @@ struct SeatListView: View {
             .foregroundStyle(.secondary)
         case .creating:
             ProgressView("Asking the server to hold this seat…")
+                .accessibilityIdentifier("seat-selection.creating")
         case .uncertain:
             Text(
                 "We couldn’t confirm the result. Retry safely: the app will reuse the same request key."
@@ -454,9 +459,12 @@ struct SeatListView: View {
                 .foregroundStyle(.green)
                 .accessibilityIdentifier("seat-selection.created")
         case .unavailable:
-            Text("This hold is no longer active. Select an available seat to start over.")
-                .font(.footnote)
-                .foregroundStyle(.orange)
+            Text(
+                "This seat or hold is no longer available. Select an available seat to start over."
+            )
+            .font(.footnote)
+            .foregroundStyle(.orange)
+            .accessibilityIdentifier("seat-selection.unavailable")
         case .keyRejected:
             Text(
                 "The saved retry key conflicts with another request. The same key is being preserved for safety."
@@ -507,6 +515,7 @@ struct SeatListView: View {
             Text("The hold expired before confirmation. Select an available seat to try again.")
                 .font(.footnote)
                 .foregroundStyle(.orange)
+                .accessibilityIdentifier("reservation.expired")
         case .unavailable:
             Text("This hold can no longer be confirmed. Choose an available seat to start again.")
                 .font(.footnote)
