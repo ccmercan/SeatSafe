@@ -111,7 +111,11 @@ Required properties:
 - A reset mechanism restricted to test environments
 - No dependency on a commercial API
 
-The exact reset mechanism is not decided yet. It will require an ADR because endpoint-based resets, direct fixtures, and disposable databases have different security and fidelity tradeoffs.
+For the first XCUITest smoke journey, [ADR-017](decisions/017-use-disposable-backend-for-ui-smoke-tests.md)
+accepts a host-side runner that owns a disposable PostgreSQL service, applies migrations,
+uses the guarded seed command, starts the real API, and tears the environment down. No HTTP
+reset endpoint is added. More complex named error scenarios can be reconsidered separately
+if this setup cannot construct them safely.
 
 ## CI test allocation
 

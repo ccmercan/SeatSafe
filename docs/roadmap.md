@@ -74,6 +74,12 @@ live-backend demonstration plus cancellation/repeated-action and screen-level ch
 
 ## Phase 3: UI automation and testability
 
+Status: in progress. ADR-017 selects a host-side test runner with disposable PostgreSQL and
+the real API for the first smoke journey. The shared Xcode scheme now contains an XCUITest
+target for selecting a seat, creating a hold, confirming it, and checking the displayed
+reservation ID. The runner starts, migrates, seeds, and tears down its services. Conflict,
+expiration, and error journeys remain future coverage.
+
 Scope:
 
 - Stable accessibility identifiers
@@ -82,11 +88,10 @@ Scope:
 - Conflict, expiration, and error scenarios
 - Failure screenshots and result bundles
 
-Key decisions:
+Remaining decisions:
 
 - UI test abstraction style
-- Test scenario injection
-- Data reset mechanism
+- Whether later error journeys need additional test-only scenario setup
 
 Exit condition: UI tests can run repeatedly without manual setup and produce useful diagnostics.
 

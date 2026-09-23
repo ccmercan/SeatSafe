@@ -363,7 +363,9 @@ struct SeatListView: View {
                                         .foregroundStyle(.tint)
                                 }
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 4)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .disabled(
@@ -371,7 +373,6 @@ struct SeatListView: View {
                                 || model.pendingAttempt != nil
                                 || model.hasCreatedHold
                         )
-                        .accessibilityElement(children: .ignore)
                         .accessibilityLabel(
                             "\(seat.displayName), \(seat.status.rawValue), \(seat.price)"
                         )
@@ -407,7 +408,6 @@ struct SeatListView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding()
                             .background(.bar)
-                            .accessibilityIdentifier("seat-selection.summary")
                         }
                     }
                 }
@@ -479,6 +479,7 @@ struct SeatListView: View {
             }
         case .confirming:
             ProgressView("Confirming your reservation…")
+                .accessibilityIdentifier("reservation.confirming")
         case .uncertain:
             Text("We couldn’t confirm the result. Retry will reuse the same hold and request key.")
                 .font(.footnote)
@@ -515,6 +516,14 @@ struct SeatListView: View {
 
 @main
 struct SeatSafeApp: App {
+    init() {
+        #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--uitesting-reset-reservation-flow") {
+                UserDefaultsReservationFlowStore().clear()
+            }
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup { SeatListView() }
     }

@@ -26,10 +26,11 @@ App Transport Security local networking only; it does not turn off ATS for remot
 1. Start the backend by following [backend/README.md](../backend/README.md).
 2. Open `SeatSafe.xcodeproj` in Xcode.
 3. Select the `SeatSafe` scheme and an iOS simulator, then Run.
-4. Run tests with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project ios/SeatSafe.xcodeproj -scheme SeatSafe -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test`.
-5. Check Swift formatting with `swift-format lint --strict SeatSafe/SeatSafeApp.swift SeatSafe/HoldCreation.swift SeatSafeTests/SeatListModelTests.swift` from `ios/`.
+4. Run only the unit tests with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project ios/SeatSafe.xcodeproj -scheme SeatSafe -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:SeatSafeTests test`.
+5. Run the complete unit + real-backend UI smoke suite from the repository root with `./tools/run-ios-ui-tests.sh`. It needs Docker Desktop and Xcode; it starts and removes a temporary database and API for you.
+6. Check Swift formatting with `xcrun swift-format lint --strict SeatSafe/SeatSafeApp.swift SeatSafe/HoldCreation.swift SeatSafeTests/SeatListModelTests.swift SeatSafeUITests/ReservationJourneyUITests.swift` from `ios/`.
 
 The project targets iOS 17. The available development simulator is iOS 26.4, so local
-execution does not yet prove runtime behavior on the minimum iOS version. The backend must
-be running to try the live end-to-end flow; automated client tests use stub services and do
-not require the backend.
+execution does not yet prove runtime behavior on the minimum iOS version. The automated
+UI smoke journey uses the real backend through the repository-level test runner; model unit
+tests use stub services and do not need the backend.

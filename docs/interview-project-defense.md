@@ -208,6 +208,23 @@ Evidence: [ADR-013](decisions/013-use-lightweight-swiftui-feature-models.md),
 
 ### Automation
 
+#### How does the UI smoke test stay deterministic?
+
+Current answer:
+
+> A host-side script owns the whole test environment. It refuses to take over an existing
+> SeatSafe test database or API port, starts a temporary PostgreSQL service, applies the
+> same migrations as the application, seeds the stable three-seat fixture, starts the real
+> API, and invokes Xcode's unit and UI test targets. The UI test selects the seat by its
+> accessibility identifier and verifies the confirmed reservation ID. A shell trap stops
+> the API and removes the temporary database even when the test fails. This keeps database
+> reset outside the API and avoids relying on manual cleanup. Two consecutive local runs
+> passed; CI retention and broader error-state journeys remain future work.
+
+Evidence: [ADR-017](decisions/017-use-disposable-backend-for-ui-smoke-tests.md),
+[Phase 3 UI smoke evidence](evidence/phase-3-ui-smoke.md), and
+`tools/run-ios-ui-tests.sh`.
+
 - Why is a test at the unit, integration, API, or UI layer?
 - How is test data made deterministic?
 - How do UI tests wait for state without fixed sleeps?
