@@ -1,53 +1,42 @@
 # SeatSafe
 
-SeatSafe is a native iOS event-seat reservation application and a production-style quality engineering portfolio project. Its central engineering challenge is preserving correct reservation behavior under concurrency, retries, expired holds, network failures, and offline access.
+SeatSafe is a native iOS seat-reservation app and quality-engineering portfolio. It explores how to keep reservations correct through concurrency, retries, expired holds, network failures, and offline use.
 
 ## Demo — Phase 3 complete
 
-The side-by-side simulator demo focuses on the concurrency conflict: one client gets the
-temporary hold, and the other sees that the seat is no longer available. The idle interval
-is removed, and the happy path is intentionally left out for now. These are manually driven
-demo recordings; automated coverage for the conflict, confirmation, expiration, and
-API-unavailable journeys is described in the [Phase 3 evidence](docs/evidence/phase-3-ui-smoke.md).
+Two iPhone simulators compete for one seat: one gets the temporary hold; the other sees
+that the seat is unavailable. The demo skips the idle interval and leaves out the expected
+happy path. Automated journey coverage is documented in the [Phase 3 evidence](docs/evidence/phase-3-ui-smoke.md).
 
 ![SeatSafe reservation conflict on two iPhone simulators](docs/media/seatsafe-two-iphone-demo.gif)
 
-## Current status
+## Project status
 
-**Phase 1: reservation-core vertical slice complete.** The FastAPI service includes
-configuration, demo identity injection, correlation IDs, Problem Details responses, the
-PostgreSQL schema migrations, deterministic demo seeding,
-`GET /v1/events/{event_id}/seats`, `POST /v1/holds`, and
-`POST /v1/reservations` with database-backed idempotency. PostgreSQL tests cover
-competing hold requests, hold and confirmation same-key replay, different-key
-confirmation attempts, and transaction rollback after a real database constraint
-failure. Hold creation's idempotency extension is recorded in ADR-014. Phase 2 is complete:
-ADR-002 accepts Swift structured concurrency,
-ADR-012 sets the iOS 17 deployment target, and ADR-013 selects lightweight SwiftUI feature
-models with injected async services. The client can load the seat snapshot and locally
-select one available seat, create a server hold, and safely retry an uncertain hold request
-using the persisted seat/key pair described by ADR-015. Reservation confirmation now
-continues that same flow: the client saves a confirmation key before calling the
-reservation endpoint and safely retries the same hold/key after an uncertain response,
-including after app-model recreation (ADR-016).
-The client also ignores stale seat responses, returns a cancelled current load to a neutral
-state, preserves retry information when hold/confirmation tasks are cancelled, and
-suppresses duplicate in-flight hold and confirmation actions. Twenty-one deterministic iOS
-unit tests validate the client behavior.
+### Phase 1 · Backend — complete
 
-**Phase 3: UI automation and testability complete.** The shared Xcode scheme covers four
-critical UI journeys: successful reservation, stale-seat conflict, hold expiration, and
-API-unavailable/retry. The local runner uses a disposable PostgreSQL database and the real
-API, and cleans up its temporary services. The final runner passed twice consecutively;
-each run passed 21 iOS unit tests and all four UI journeys. See the
-[Phase 3 evidence](docs/evidence/phase-3-ui-smoke.md) for commands, results, and limits.
+- FastAPI + PostgreSQL: migrations, deterministic demo data, request correlation, and Problem Details errors.
+- Seat snapshot, hold, and reservation endpoints with database-backed idempotency.
+- Database tests cover contention, request replay, distinct-key confirmations, and transaction rollback.
 
-**Phase 4: CI and release signals not started.** GitHub Actions, scheduled regression runs,
-and CI artifact retention remain future work.
+### Phase 2 · iOS client — complete
+
+- iOS 17+ SwiftUI app with injected async services and Swift structured concurrency.
+- Seat loading, selection, hold, confirmation, and persisted keys for safe retries—even after app-model recreation.
+- Handles stale responses and cancellation; prevents duplicate in-flight actions. **21 deterministic unit tests.**
+
+### Phase 3 · UI quality — complete
+
+- Four XCUITest journeys: reservation, seat conflict, hold expiration, and API unavailable/retry.
+- Tests use the real API and a disposable PostgreSQL database that the runner cleans up.
+- Two consecutive successful runs; each passed all 21 unit tests and four UI journeys. See [test evidence](docs/evidence/phase-3-ui-smoke.md).
+
+### Phase 4 · CI and release signals — not started
+
+GitHub Actions, scheduled regressions, and CI artifact retention are next; no Phase 4 work is claimed yet.
 
 ## Why this project exists
 
-The visible application is intentionally small. The engineering depth comes from owning both the system and its quality infrastructure:
+The app stays intentionally small; the depth is in building and testing the system behind it:
 
 - Native Swift/SwiftUI client
 - Swift structured concurrency, cancellation, and UI-state isolation
@@ -55,7 +44,7 @@ The visible application is intentionally small. The engineering depth comes from
 - Python/FastAPI service
 - PostgreSQL persistence and transaction guarantees
 - API, integration, concurrency, accessibility, and performance testing
-- Continuous integration, failure artifacts, quality gates, and flake analysis
+- CI quality gates, failure artifacts, and flake analysis (Phase 4)
 - Architecture Decision Records and defect case studies
 
 ## Core user journey
@@ -65,17 +54,15 @@ Discover event -> inspect event -> select seat -> hold seat
     -> confirm reservation -> retrieve it online or offline -> cancel
 ```
 
-## Documentation
+## Project guides
 
-- [Product brief](docs/product-brief.md)
-- [Engineering requirements](docs/engineering-requirements.md)
-- [Test strategy](docs/test-strategy.md)
-- [Learning plan](docs/learning-plan.md)
-- [Roadmap](docs/roadmap.md)
-- [Phase 2 concurrency evidence](docs/evidence/phase-2-concurrency.md)
-- [Phase 3 UI smoke evidence](docs/evidence/phase-3-ui-smoke.md)
-- [Interview project defense](docs/interview-project-defense.md)
-- [Editable Excalidraw visual learning pack](docs/diagrams/README.md)
+- [Product brief](docs/product-brief.md) · [Requirements](docs/engineering-requirements.md) · [Roadmap](docs/roadmap.md)
+- [Test strategy](docs/test-strategy.md) · [Phase 2 evidence](docs/evidence/phase-2-concurrency.md) · [Phase 3 evidence](docs/evidence/phase-3-ui-smoke.md)
+- [Learning plan](docs/learning-plan.md) · [Interview project defense](docs/interview-project-defense.md) · [Excalidraw diagrams](docs/diagrams/README.md)
+
+<details>
+<summary>Architecture decisions (ADRs 001–017)</summary>
+
 - [ADR-001: Own the reservation backend](docs/decisions/001-own-the-reservation-backend.md)
 - [ADR-002: Manage client work with structured concurrency](docs/decisions/002-swift-structured-concurrency.md)
 - [ADR-003: Serialize seat transitions with row locks and constraints](docs/decisions/003-serialize-seat-transitions-with-row-locks.md)
@@ -94,9 +81,11 @@ Discover event -> inspect event -> select seat -> hold seat
 - [ADR-016: Persist the hold and confirmation key locally](docs/decisions/016-persist-pending-confirmation-locally.md)
 - [ADR-017: Run UI smoke tests against a disposable backend](docs/decisions/017-use-disposable-backend-for-ui-smoke-tests.md)
 
+</details>
+
 ## Planned repository shape
 
-The implementation structure follows accepted ADRs and will evolve as features are added:
+Key areas of the codebase:
 
 ```text
 ios/                 Native application and Apple-platform tests
@@ -108,14 +97,11 @@ docs/                Requirements, decisions, strategy, and evidence
 
 ## Working agreement
 
-This is a learning-first project. Major decisions are discussed, compared, recorded, and validated before implementation. See [AGENTS.md](AGENTS.md) for the collaboration rules applied to future Codex tasks.
+This is a learning-first project. Major decisions are compared, recorded, and validated before implementation. See [AGENTS.md](AGENTS.md) for the project workflow.
 
-## Current implementation slice
+## Concurrency guarantee
 
-The client architecture is set by ADR-013. Seat loading, local selection, hold creation,
-reservation confirmation, and stable-key recovery for both writes are implemented. Phase 2
-and Phase 3 are complete; Phase 3's real-backend UI coverage includes the reservation,
-conflict, expiration, and API-unavailable journeys. Phase 4 has not started.
-The database permits only one active hold per event-seat, so the seat row lock remains
-necessary even with idempotency: different customers use different keys while competing
-for the same seat.
+PostgreSQL permits only one active hold per event-seat. A row lock serializes competing
+customers; idempotency handles retries by one customer, not conflicts between different
+customers. See [ADR-003](docs/decisions/003-serialize-seat-transitions-with-row-locks.md),
+[ADR-007](docs/decisions/007-use-database-backed-idempotency.md), and the [Phase 2 evidence](docs/evidence/phase-2-concurrency.md).
