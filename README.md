@@ -2,6 +2,16 @@
 
 SeatSafe is a native iOS event-seat reservation application and a production-style quality engineering portfolio project. Its central engineering challenge is preserving correct reservation behavior under concurrency, retries, expired holds, network failures, and offline access.
 
+## Demo — Phase 3 complete
+
+The side-by-side simulator demo focuses on the concurrency conflict: one client gets the
+temporary hold, and the other sees that the seat is no longer available. The idle interval
+is removed, and the happy path is intentionally left out for now. These are manually driven
+demo recordings; automated coverage for the conflict, confirmation, expiration, and
+API-unavailable journeys is described in the [Phase 3 evidence](docs/evidence/phase-3-ui-smoke.md).
+
+![SeatSafe reservation conflict on two iPhone simulators](docs/media/seatsafe-two-iphone-demo.gif)
+
 ## Current status
 
 **Phase 1: reservation-core vertical slice complete.** The FastAPI service includes
@@ -54,16 +64,6 @@ The visible application is intentionally small. The engineering depth comes from
 Discover event -> inspect event -> select seat -> hold seat
     -> confirm reservation -> retrieve it online or offline -> cancel
 ```
-
-## Demo — Phase 3 complete
-
-The side-by-side simulator demo focuses on the concurrency conflict: one client gets the
-temporary hold, and the other sees that the seat is no longer available. The idle interval
-is removed, and the happy path is intentionally left out for now. These are manually driven
-demo recordings; automated coverage for the conflict, confirmation, expiration, and
-API-unavailable journeys is described in the [Phase 3 evidence](docs/evidence/phase-3-ui-smoke.md).
-
-![SeatSafe reservation conflict on two iPhone simulators](docs/media/seatsafe-two-iphone-demo.gif)
 
 ## Documentation
 
