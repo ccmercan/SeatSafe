@@ -25,9 +25,15 @@ state, preserves retry information when hold/confirmation tasks are cancelled, a
 suppresses duplicate in-flight hold and confirmation actions. Twenty-one deterministic iOS
 unit tests validate the client behavior.
 
-Phase 3 has started. ADR-017 selects a disposable PostgreSQL + real API setup for the
-first XCUITest smoke journey. `tools/run-ios-ui-tests.sh` starts the database and API,
-runs unit and UI tests, and tears the temporary services down afterward.
+**Phase 3: UI automation and testability complete.** The shared Xcode scheme covers four
+critical UI journeys: successful reservation, stale-seat conflict, hold expiration, and
+API-unavailable/retry. The local runner uses a disposable PostgreSQL database and the real
+API, and cleans up its temporary services. The final runner passed twice consecutively;
+each run passed 21 iOS unit tests and all four UI journeys. See the
+[Phase 3 evidence](docs/evidence/phase-3-ui-smoke.md) for commands, results, and limits.
+
+**Phase 4: CI and release signals not started.** GitHub Actions, scheduled regression runs,
+and CI artifact retention remain future work.
 
 ## Why this project exists
 
@@ -48,6 +54,16 @@ The visible application is intentionally small. The engineering depth comes from
 Discover event -> inspect event -> select seat -> hold seat
     -> confirm reservation -> retrieve it online or offline -> cancel
 ```
+
+## Demo — Phase 3 complete
+
+The side-by-side simulator demo focuses on the concurrency conflict: one client gets the
+temporary hold, and the other sees that the seat is no longer available. The idle interval
+is removed, and the happy path is intentionally left out for now. These are manually driven
+demo recordings; automated coverage for the conflict, confirmation, expiration, and
+API-unavailable journeys is described in the [Phase 3 evidence](docs/evidence/phase-3-ui-smoke.md).
+
+![SeatSafe reservation conflict on two iPhone simulators](docs/media/seatsafe-two-iphone-demo.gif)
 
 ## Documentation
 
@@ -97,10 +113,9 @@ This is a learning-first project. Major decisions are discussed, compared, recor
 ## Current implementation slice
 
 The client architecture is set by ADR-013. Seat loading, local selection, hold creation,
-reservation confirmation, and stable-key recovery for both writes are implemented. The
-Phase 2 is complete: the live-backend journey and client concurrency cases are covered.
-Phase 3 is in progress; its real-backend screen-level smoke test covers the critical
-journey, with conflict and expiration UI journeys still to add.
+reservation confirmation, and stable-key recovery for both writes are implemented. Phase 2
+and Phase 3 are complete; Phase 3's real-backend UI coverage includes the reservation,
+conflict, expiration, and API-unavailable journeys. Phase 4 has not started.
 The database permits only one active hold per event-seat, so the seat row lock remains
 necessary even with idempotency: different customers use different keys while competing
 for the same seat.
