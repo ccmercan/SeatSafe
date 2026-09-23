@@ -163,8 +163,8 @@ Evidence to add:
 
 ### Why use lightweight SwiftUI feature models?
 
-Status: ADR-013 accepted and the first seat-loading slice is implemented. Simulator test
-execution remains pending a working CoreSimulator runtime.
+Status: ADR-013 accepted; the seat-to-reservation client flow and concurrency tests are
+implemented and validated on the available iOS 26.4 simulator.
 
 Draft answer:
 
@@ -177,6 +177,23 @@ Draft answer:
 
 Evidence: [ADR-013](decisions/013-use-lightweight-swiftui-feature-models.md),
 [Phase 2 seat-loading evidence](evidence/phase-2-seat-loading.md), and
+`ios/SeatSafeTests/SeatListModelTests.swift`.
+
+#### How does the client handle cancellation, stale reads, and repeated taps?
+
+Current answer:
+
+> Each seat load has a request identity. If an older request finishes after the user has
+> selected another event, the model ignores that old result. If the current screen's load
+> is cancelled, it returns to a neutral state instead of showing a network error. Hold and
+> confirmation writes are different: cancellation leaves the outcome uncertain, so the
+> client keeps the original IDs and idempotency key for a safe retry. While a write is in
+> flight, the model rejects another equivalent action. Tests pause requests with
+> continuations, then explicitly cancel or complete them; this checks the race without
+> guessing with sleeps. The server remains responsible for preventing duplicate bookings.
+
+Evidence: [Phase 2 concurrency evidence](evidence/phase-2-concurrency.md),
+[ADR-002](decisions/002-swift-structured-concurrency.md), and
 `ios/SeatSafeTests/SeatListModelTests.swift`.
 
 ### Product and scope
@@ -218,8 +235,9 @@ Current answer:
 > API, and invokes Xcode's unit and UI test targets. The UI test selects the seat by its
 > accessibility identifier and verifies the confirmed reservation ID. A shell trap stops
 > the API and removes the temporary database even when the test fails. This keeps database
-> reset outside the API and avoids relying on manual cleanup. Two consecutive local runs
-> passed; CI retention and broader error-state journeys remain future work.
+> reset outside the API and avoids relying on manual cleanup. Two consecutive initial runs
+> passed, and a later full run after the Phase 2 concurrency changes passed with 21 unit
+> tests and 1 UI test. CI retention and broader error-state journeys remain future work.
 
 Evidence: [ADR-017](decisions/017-use-disposable-backend-for-ui-smoke-tests.md),
 [Phase 3 UI smoke evidence](evidence/phase-3-ui-smoke.md), and

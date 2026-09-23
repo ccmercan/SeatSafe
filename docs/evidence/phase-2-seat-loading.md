@@ -45,6 +45,8 @@
   passed using the repository's four-space `.swift-format` configuration.
 - The installed simulator runtime is iOS 26.4. iOS 17 runtime compatibility remains
   unverified locally, as recorded in ADR-012.
+- Phase 2 cancellation, stale-response, and repeated-action validation was added afterward;
+  see [Phase 2 concurrency evidence](phase-2-concurrency.md) for the final 21-test result.
 
 ## Limitations
 
@@ -52,5 +54,5 @@
   discovery or production environment configuration.
 - The local flow store is intentionally limited to one in-progress attempt, matching the
   current single-seat demo flow. The backend remains authoritative for availability.
-- Live interaction with the confirmation control still needs a manual run with the local
-  backend started; the current test suite validates it below the UI layer.
+- The screen-level confirmation journey is validated by the real-backend UI smoke test in
+  [Phase 3 evidence](phase-3-ui-smoke.md).

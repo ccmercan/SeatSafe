@@ -11,7 +11,7 @@ PostgreSQL schema migrations, deterministic demo seeding,
 `POST /v1/reservations` with database-backed idempotency. PostgreSQL tests cover
 competing hold requests, hold and confirmation same-key replay, different-key
 confirmation attempts, and transaction rollback after a real database constraint
-failure. Hold creation's idempotency extension is recorded in ADR-014. Phase 2 is in progress:
+failure. Hold creation's idempotency extension is recorded in ADR-014. Phase 2 is complete:
 ADR-002 accepts Swift structured concurrency,
 ADR-012 sets the iOS 17 deployment target, and ADR-013 selects lightweight SwiftUI feature
 models with injected async services. The client can load the seat snapshot and locally
@@ -20,6 +20,10 @@ using the persisted seat/key pair described by ADR-015. Reservation confirmation
 continues that same flow: the client saves a confirmation key before calling the
 reservation endpoint and safely retries the same hold/key after an uncertain response,
 including after app-model recreation (ADR-016).
+The client also ignores stale seat responses, returns a cancelled current load to a neutral
+state, preserves retry information when hold/confirmation tasks are cancelled, and
+suppresses duplicate in-flight hold and confirmation actions. Twenty-one deterministic iOS
+unit tests validate the client behavior.
 
 Phase 3 has started. ADR-017 selects a disposable PostgreSQL + real API setup for the
 first XCUITest smoke journey. `tools/run-ios-ui-tests.sh` starts the database and API,
@@ -52,6 +56,7 @@ Discover event -> inspect event -> select seat -> hold seat
 - [Test strategy](docs/test-strategy.md)
 - [Learning plan](docs/learning-plan.md)
 - [Roadmap](docs/roadmap.md)
+- [Phase 2 concurrency evidence](docs/evidence/phase-2-concurrency.md)
 - [Phase 3 UI smoke evidence](docs/evidence/phase-3-ui-smoke.md)
 - [Interview project defense](docs/interview-project-defense.md)
 - [Editable Excalidraw visual learning pack](docs/diagrams/README.md)
@@ -93,9 +98,9 @@ This is a learning-first project. Major decisions are discussed, compared, recor
 
 The client architecture is set by ADR-013. Seat loading, local selection, hold creation,
 reservation confirmation, and stable-key recovery for both writes are implemented. The
-core flow has been demonstrated against the live backend. Remaining Phase 2 work is
-additional cancellation and repeated-action coverage; Phase 3 adds the automated
-screen-level smoke test for the critical journey.
+Phase 2 is complete: the live-backend journey and client concurrency cases are covered.
+Phase 3 is in progress; its real-backend screen-level smoke test covers the critical
+journey, with conflict and expiration UI journeys still to add.
 The database permits only one active hold per event-seat, so the seat row lock remains
 necessary even with idempotency: different customers use different keys while competing
 for the same seat.

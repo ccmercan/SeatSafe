@@ -40,7 +40,7 @@ Exit condition: met. PostgreSQL concurrency tests demonstrate one valid hold win
 
 ## Phase 2: Native iOS vertical slice
 
-Status: in progress. ADR-002 selects Swift structured concurrency and main-actor feature
+Status: complete. ADR-002 selects Swift structured concurrency and main-actor feature
 state; ADR-012 sets the iOS deployment target to 17; ADR-013 selects lightweight SwiftUI
 feature models with injected async services. Seat-snapshot loading and local selection
 of one available seat are implemented and unit tested. ADR-014 defines database-backed
@@ -67,10 +67,12 @@ Key decisions:
 - Structured task ownership and cancellation
 - Main-actor and shared-state isolation boundaries
 
-Exit condition: the critical flow works end to end in the simulator, is covered below the
-UI layer, and remains correct when requests complete out of order, are cancelled, or are
-triggered repeatedly. The core hold-and-confirm behavior is implemented and unit tested;
-live-backend demonstration plus cancellation/repeated-action and screen-level checks remain.
+Exit condition: met. The core flow runs end to end against the local backend and has a
+real-backend simulator smoke test. Twenty-one deterministic iOS unit tests cover the
+feature and validate out-of-order seat responses, cancelled reads and writes, stable retry
+inputs, and suppression of duplicate in-flight hold/confirmation requests. Cancellation
+here means cancelling local asynchronous work; cancelling a confirmed booking is a separate
+product feature and is not implemented.
 
 ## Phase 3: UI automation and testability
 

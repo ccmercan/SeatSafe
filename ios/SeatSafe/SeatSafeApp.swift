@@ -104,6 +104,7 @@ final class SeatListModel {
     private let confirmationKeyFactory: () -> String
     private(set) var persistedFlow: PersistedReservationFlow?
     private var currentEventID: UUID?
+    private var currentSeatLoadRequestID: UUID?
 
     init(
         service: any SeatService,
@@ -138,14 +139,26 @@ final class SeatListModel {
     }
 
     func load(eventID: UUID) async {
+        let requestID = UUID()
+        currentSeatLoadRequestID = requestID
         currentEventID = eventID
         selectedSeatID = flowSeatID
         state = .loading
         do {
-            state = .loaded(try await service.seats(for: eventID))
+            let seats = try await service.seats(for: eventID)
+            guard currentSeatLoadRequestID == requestID else { return }
+            guard !Task.isCancelled else {
+                state = .idle
+                return
+            }
+            state = .loaded(seats)
         } catch is CancellationError {
-            // Leaving or replacing this screen is not shown as a product failure.
+            // Leaving the current screen is not shown as a product failure. A stale
+            // request must not clear the loading state for a newer screen.
+            guard currentSeatLoadRequestID == requestID else { return }
+            state = .idle
         } catch {
+            guard currentSeatLoadRequestID == requestID else { return }
             state = .failed
         }
     }

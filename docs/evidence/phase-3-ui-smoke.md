@@ -28,6 +28,9 @@
 - After the compile-condition and row-hit-area fixes, `./tools/run-ios-ui-tests.sh` passed
   **twice consecutively** from fresh disposable databases on the iPhone 17 Pro simulator
   (iOS 26.4): **15 unit tests and 1 UI test, 0 failures per run**.
+- After adding the Phase 2 stale-load guard and concurrency tests, a follow-up full runner
+  execution also passed: **21 unit tests and 1 UI test, 0 failures**. The runner removed the
+  API and disposable PostgreSQL container/network afterward.
 - Both runs exercised the real service contract: the app loaded seats, posted a hold,
   posted a reservation confirmation, displayed the returned reservation identifier, and
   the runner removed the API/container afterward.

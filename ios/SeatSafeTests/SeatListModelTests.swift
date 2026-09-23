@@ -80,6 +80,104 @@ private actor ScriptedReservationService: ReservationService {
     func recordedRequests() -> [(holdID: UUID, key: String)] { requests }
 }
 
+/// Deliberately ignores task cancellation so a late response can be delivered on command.
+private actor ControlledSeatService: SeatService {
+    private var pending: [UUID: CheckedContinuation<[EventSeat], Error>] = [:]
+    private var requestWaiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
+
+    func seats(for eventID: UUID) async throws -> [EventSeat] {
+        try await withCheckedThrowingContinuation { continuation in
+            pending[eventID] = continuation
+            for waiter in requestWaiters.removeValue(forKey: eventID) ?? [] {
+                waiter.resume()
+            }
+        }
+    }
+
+    func waitUntilRequested(_ eventID: UUID) async {
+        if pending[eventID] != nil { return }
+        await withCheckedContinuation { continuation in
+            requestWaiters[eventID, default: []].append(continuation)
+        }
+    }
+
+    func respond(to eventID: UUID, with seats: [EventSeat]) {
+        pending.removeValue(forKey: eventID)?.resume(returning: seats)
+    }
+}
+
+/// Holds writes in flight until the test explicitly cancels or completes them.
+private actor InFlightHoldService: HoldService {
+    private(set) var requests: [PendingHoldAttempt] = []
+    private var pending: CheckedContinuation<CreatedHold, Error>?
+    private var requestWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+
+    func createHold(for eventSeatID: UUID, idempotencyKey: String) async throws -> CreatedHold {
+        requests.append(
+            PendingHoldAttempt(eventSeatID: eventSeatID, idempotencyKey: idempotencyKey))
+        resumeReadyWaiters()
+        return try await withCheckedThrowingContinuation { pending = $0 }
+    }
+
+    func waitForRequestCount(_ count: Int) async {
+        if requests.count >= count { return }
+        await withCheckedContinuation { requestWaiters.append((count, $0)) }
+    }
+
+    func cancelCurrentRequest() {
+        pending?.resume(throwing: CancellationError())
+        pending = nil
+    }
+
+    func completeCurrentRequest(with hold: CreatedHold) {
+        pending?.resume(returning: hold)
+        pending = nil
+    }
+
+    private func resumeReadyWaiters() {
+        let ready = requestWaiters.filter { $0.count <= requests.count }
+        requestWaiters.removeAll { $0.count <= requests.count }
+        for waiter in ready {
+            waiter.continuation.resume()
+        }
+    }
+}
+
+private actor InFlightReservationService: ReservationService {
+    private(set) var requests: [(holdID: UUID, key: String)] = []
+    private var pending: CheckedContinuation<CreatedReservation, Error>?
+    private var requestWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+
+    func confirm(holdID: UUID, idempotencyKey: String) async throws -> CreatedReservation {
+        requests.append((holdID, idempotencyKey))
+        resumeReadyWaiters()
+        return try await withCheckedThrowingContinuation { pending = $0 }
+    }
+
+    func waitForRequestCount(_ count: Int) async {
+        if requests.count >= count { return }
+        await withCheckedContinuation { requestWaiters.append((count, $0)) }
+    }
+
+    func cancelCurrentRequest() {
+        pending?.resume(throwing: CancellationError())
+        pending = nil
+    }
+
+    func completeCurrentRequest(with reservation: CreatedReservation) {
+        pending?.resume(returning: reservation)
+        pending = nil
+    }
+
+    private func resumeReadyWaiters() {
+        let ready = requestWaiters.filter { $0.count <= requests.count }
+        requestWaiters.removeAll { $0.count <= requests.count }
+        for waiter in ready {
+            waiter.continuation.resume()
+        }
+    }
+}
+
 private enum TestFailure: Error, Sendable { case expected }
 
 @MainActor
@@ -192,6 +290,50 @@ final class SeatListModelTests: XCTestCase {
         XCTAssertEqual(model.state, .failed)
     }
 
+    func testOlderSeatResponseCannotReplaceNewerEventSelection() async {
+        let firstEvent = UUID()
+        let secondEvent = UUID()
+        let firstSeat = makeSeat(id: "00000000-0000-4000-8000-000000000040", status: .available)
+        let secondSeat = makeSeat(id: "00000000-0000-4000-8000-000000000041", status: .available)
+        let service = ControlledSeatService()
+        let model = SeatListModel(
+            service: service,
+            holdService: makeHoldService(),
+            reservationService: makeReservationService()
+        )
+
+        let olderLoad = Task { await model.load(eventID: firstEvent) }
+        await service.waitUntilRequested(firstEvent)
+        let newerLoad = Task { await model.load(eventID: secondEvent) }
+        await service.waitUntilRequested(secondEvent)
+
+        await service.respond(to: secondEvent, with: [secondSeat])
+        await newerLoad.value
+        await service.respond(to: firstEvent, with: [firstSeat])
+        await olderLoad.value
+
+        XCTAssertEqual(model.state, .loaded([secondSeat]))
+    }
+
+    func testCancelledSeatLoadDoesNotPublishLateResponseOrShowFailure() async {
+        let eventID = UUID()
+        let seat = makeSeat(id: "00000000-0000-4000-8000-000000000040", status: .available)
+        let service = ControlledSeatService()
+        let model = SeatListModel(
+            service: service,
+            holdService: makeHoldService(),
+            reservationService: makeReservationService()
+        )
+        let load = Task { await model.load(eventID: eventID) }
+        await service.waitUntilRequested(eventID)
+
+        load.cancel()
+        await service.respond(to: eventID, with: [seat])
+        await load.value
+
+        XCTAssertEqual(model.state, .idle)
+    }
+
     func testAvailableSeatCanBeSelectedAndDeselected() async {
         let seat = makeSeat(id: "00000000-0000-4000-8000-000000000040", status: .available)
         let model = makeModel(seats: [seat])
@@ -259,6 +401,76 @@ final class SeatListModelTests: XCTestCase {
         model.toggleSelection(for: otherSeat.id)
         XCTAssertEqual(model.selectedSeat?.id, seat.id)
         XCTAssertEqual(model.holdState, .created(hold))
+    }
+
+    func testRepeatedHoldActionWhileRequestIsInFlightSendsOnlyOneRequest() async {
+        let seat = makeSeat(id: "00000000-0000-4000-8000-000000000040", status: .available)
+        let hold = makeHold(for: seat.id)
+        let service = InFlightHoldService()
+        let model = SeatListModel(
+            service: StubSeatService(result: .success([seat])),
+            holdService: service,
+            reservationService: makeReservationService(),
+            flowStore: InMemoryReservationFlowStore(),
+            idempotencyKeyFactory: { "one-hold-key" },
+            confirmationKeyFactory: { "confirm-key" }
+        )
+        await model.load(eventID: UUID())
+        model.toggleSelection(for: seat.id)
+
+        let firstAction = Task { await model.createHold() }
+        await service.waitForRequestCount(1)
+        await model.createHold()
+
+        let requestsBeforeResponse = await service.requests
+        XCTAssertEqual(requestsBeforeResponse.count, 1)
+        await service.completeCurrentRequest(with: hold)
+        await firstAction.value
+
+        let requests = await service.requests
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertEqual(model.holdState, .created(hold))
+    }
+
+    func testCancelledHoldKeepsSameAttemptAndCanRetry() async {
+        let seat = makeSeat(id: "00000000-0000-4000-8000-000000000040", status: .available)
+        let hold = makeHold(for: seat.id)
+        let service = InFlightHoldService()
+        let store = InMemoryReservationFlowStore()
+        let model = SeatListModel(
+            service: StubSeatService(result: .success([seat])),
+            holdService: service,
+            reservationService: makeReservationService(),
+            flowStore: store,
+            idempotencyKeyFactory: { "same-hold-key" },
+            confirmationKeyFactory: { "confirm-key" }
+        )
+        await model.load(eventID: UUID())
+        model.toggleSelection(for: seat.id)
+
+        let firstAction = Task { await model.createHold() }
+        await service.waitForRequestCount(1)
+        firstAction.cancel()
+        await service.cancelCurrentRequest()
+        await firstAction.value
+
+        let savedAttempt = PendingHoldAttempt(eventSeatID: seat.id, idempotencyKey: "same-hold-key")
+        XCTAssertEqual(model.holdState, .uncertain)
+        XCTAssertEqual(store.load(), .pendingHold(savedAttempt))
+
+        let retry = Task { await model.createHold() }
+        await service.waitForRequestCount(2)
+        let requestsBeforeResponse = await service.requests
+        XCTAssertEqual(requestsBeforeResponse, [savedAttempt, savedAttempt])
+        await service.completeCurrentRequest(with: hold)
+        await retry.value
+
+        XCTAssertEqual(model.holdState, .created(hold))
+        XCTAssertEqual(
+            store.load(),
+            .pendingConfirmation(
+                PendingReservationConfirmation(hold: hold, idempotencyKey: "confirm-key")
+            ))
     }
 
     func testRestoredAttemptCanRetryWhenSnapshotAlreadyShowsSeatHeld() async {
@@ -442,6 +654,72 @@ final class SeatListModelTests: XCTestCase {
         XCTAssertEqual(requests.map(\.holdID), [hold.id, hold.id])
         XCTAssertEqual(requests.map(\.key), ["confirm-key", "confirm-key"])
         XCTAssertEqual(reopenedModel.confirmationState, .confirmed(reservation))
+        XCTAssertNil(store.load())
+    }
+
+    func testRepeatedConfirmationActionWhileRequestIsInFlightSendsOnlyOneRequest() async {
+        let seat = makeSeat(id: "00000000-0000-4000-8000-000000000040", status: .held)
+        let hold = makeHold(for: seat.id)
+        let reservation = makeReservation(for: hold)
+        let pending = PendingReservationConfirmation(hold: hold, idempotencyKey: "one-confirm-key")
+        let service = InFlightReservationService()
+        let model = SeatListModel(
+            service: StubSeatService(result: .success([seat])),
+            holdService: makeHoldService(),
+            reservationService: service,
+            flowStore: InMemoryReservationFlowStore(flow: .pendingConfirmation(pending))
+        )
+        await model.load(eventID: UUID())
+
+        let firstAction = Task { await model.confirmReservation() }
+        await service.waitForRequestCount(1)
+        await model.confirmReservation()
+
+        let requestsBeforeResponse = await service.requests
+        XCTAssertEqual(requestsBeforeResponse.count, 1)
+        await service.completeCurrentRequest(with: reservation)
+        await firstAction.value
+
+        let requests = await service.requests
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertEqual(model.confirmationState, .confirmed(reservation))
+    }
+
+    func testCancelledConfirmationKeepsSameHoldAndKeyForRetry() async {
+        let seat = makeSeat(id: "00000000-0000-4000-8000-000000000040", status: .held)
+        let hold = makeHold(for: seat.id)
+        let reservation = makeReservation(for: hold)
+        let pending = PendingReservationConfirmation(hold: hold, idempotencyKey: "same-confirm-key")
+        let service = InFlightReservationService()
+        let store = InMemoryReservationFlowStore(flow: .pendingConfirmation(pending))
+        let model = SeatListModel(
+            service: StubSeatService(result: .success([seat])),
+            holdService: makeHoldService(),
+            reservationService: service,
+            flowStore: store
+        )
+        await model.load(eventID: UUID())
+
+        let firstAction = Task { await model.confirmReservation() }
+        await service.waitForRequestCount(1)
+        firstAction.cancel()
+        await service.cancelCurrentRequest()
+        await firstAction.value
+
+        XCTAssertEqual(model.confirmationState, .uncertain)
+        XCTAssertEqual(store.load(), .pendingConfirmation(pending))
+
+        let retry = Task { await model.confirmReservation() }
+        await service.waitForRequestCount(2)
+        let requestsBeforeResponse = await service.requests
+        XCTAssertEqual(
+            requestsBeforeResponse.map(\.holdID), [hold.id, hold.id])
+        XCTAssertEqual(
+            requestsBeforeResponse.map(\.key), ["same-confirm-key", "same-confirm-key"])
+        await service.completeCurrentRequest(with: reservation)
+        await retry.value
+
+        XCTAssertEqual(model.confirmationState, .confirmed(reservation))
         XCTAssertNil(store.load())
     }
 
